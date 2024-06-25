@@ -3,17 +3,24 @@ import calibrationroutine as pna
 
 
 dpg.create_context()
-dpg.create_viewport(title='PNA and SA Scripted Programs', width=600, height=300)
+dpg.create_viewport(title='PNA Two-Tone Test', width=1000, height=600)
 
 
-def start_calibration():
+def start_session():
     if pna.connect_to_pna() == 1:
         dpg.set_value("start_text", "Could not connect to PNA, check USB connection and try again")
-        # print("Could not connect to PNA, try again")
+        # dpg.add_text('Error connecting to PNA', parent='console')
         return
     else:
-        dpg.delete_item("cal_window", children_only=True, slot=1)
-        dpg.configure_item("modal_id", show=True)
+        dpg.delete_item("cal_window")
+        # dpg.configure_item("modal_id", show=True)
+        with dpg.window(label="Menu", tag="menu_window", on_close=close):
+            dpg.add_button(label="Noise Floor", callback=noise_floor, tag="noise_floor_button", parent="menu_window")
+            dpg.add_button(label="Calibrate", callback=lambda: dpg.configure_item("modal_id", show=True),
+                           tag="machine_cal_button", parent="menu_window")
+            dpg.add_button(label="Measure", callback=lambda: dpg.configure_item("modal_dut", show=True),
+                           tag="start_cycle_button", parent="menu_window")
+            dpg.add_button(label="Cancel", callback=end_cycle, tag="end_cycle_button", parent="menu_window")
 
 
 def close():
@@ -21,99 +28,95 @@ def close():
     dpg.configure_item("cal_button", enabled=True)
 
 
-def button_callback(sender):
-    dpg.configure_item("yfac_button", enabled=False)
-    dpg.configure_item("cal_button", enabled=False)
-    if sender == "cal_button":
-        global cal_window
-        if cal_window is not None:
-            dpg.delete_item(cal_window)
-            cal_window = None
-        with dpg.window(label="Calibration", tag="cal_window", on_close=close) as cal_window:
-            dpg.add_text("This is the two-tone calibration program.", parent="cal_window")
-            dpg.add_text("Ensure USB connection between the computer and PNA, then click Start",
-                         parent="cal_window", tag="start_text")
-            dpg.add_button(label="START", callback=start_calibration, tag="start_cal", parent="cal_window")
-    if sender == "yfac_button":
-        with dpg.window(label="Y-Factor", tag="yfac_window"):
-            dpg.add_text("This is the Y-factor measurement program")
-
-
 def noise_floor(sender):
-    dpg.configure_item("modal_id", show=False)
+    dpg.configure_item("noise_floor_button", enabled=False)
+    dpg.configure_item("machine_cal_button", enabled=False)
+    dpg.configure_item("start_cycle_button", enabled=False)
+    dpg.configure_item("end_cycle_button", enabled=False)
+    dpg.add_text("Starting the PNA calibration at 0dB...", parent='console')
     pna.noise_floor_cal('C:\\Users\\ckeeler\\Documents\\DSA2000\\TestSoftware\\data\\')
-
-
-def no_noise_floor(sender):
-    dpg.configure_item("modal_id", show=False)
-    dpg.configure_item("modal_id2", show=True)
+    dpg.add_text("Finished the noise floor measurements.", parent='console')
+    dpg.configure_item("noise_floor_button", enabled=True)
+    dpg.configure_item("machine_cal_button", enabled=True)
+    dpg.configure_item("start_cycle_button", enabled=True)
+    dpg.configure_item("end_cycle_button", enabled=True)
 
 
 def machine_cal(sender):
-    dpg.configure_item("modal_id2", show=False)
-    pna.two_tone_calibration("-50")
-    dpg.configure_item("modal_id3", show=True)
-
-
-def no_machine_cal(sender):
-    dpg.configure_item("modal_id2", show=False)
-    dpg.configure_item("modal_id3", show=True)
+    power = dpg.get_value("power_level")
+    dpg.configure_item("modal_id", show=False)
+    dpg.configure_item("noise_floor_button", enabled=False)
+    dpg.configure_item("machine_cal_button", enabled=False)
+    dpg.configure_item("start_cycle_button", enabled=False)
+    dpg.configure_item("end_cycle_button", enabled=False)
+    dpg.add_text("Starting the PNA calibration at the user specified power level...", parent='console')
+    pna.two_tone_calibration(power)
+    dpg.add_text("Finished calibrating the PNA to the user specified level.", parent='console')
+    dpg.configure_item("noise_floor_button", enabled=True)
+    dpg.configure_item("machine_cal_button", enabled=True)
+    dpg.configure_item("start_cycle_button", enabled=True)
+    dpg.configure_item("end_cycle_button", enabled=True)
 
 
 def start_cycle():
-    device = dpg.get_value("serial_num")
-    dpg.configure_item("modal_id3", show=False)
+    device = dpg.get_value("serial_number")
+    frx = dpg.get_value("frx_attenuation")
+    ftx = dpg.get_value("ftx_attenuation")
+    dpg.configure_item("modal_dut", show=False)
+    dpg.configure_item("noise_floor_button", enabled=False)
+    dpg.configure_item("machine_cal_button", enabled=False)
+    dpg.configure_item("start_cycle_button", enabled=False)
+    dpg.configure_item("end_cycle_button", enabled=False)
     # Ask the user for the serial number
     # Ask the user for the filepath
+    # TODO: read SN from device
+    # TODO: set atten values with i2c
+    dpg.add_text("Starting the two-tone measurement for the current device...", parent='console')
     pna.device_measure('C:\\Users\\ckeeler\\Documents\\DSA2000\\TestSoftware\\data\\', device)
-
-    # Ask if there's another device
-    # If yes, repeat the cycle
-    # If no, close out the session
+    dpg.add_text("Finished the two-tone measurement for the current device.", parent='console')
+    dpg.configure_item("noise_floor_button", enabled=True)
+    dpg.configure_item("machine_cal_button", enabled=True)
+    dpg.configure_item("start_cycle_button", enabled=True)
+    dpg.configure_item("end_cycle_button", enabled=True)
 
 
 def end_cycle():
-    dpg.configure_item("modal_id3", show=False)
+    # dpg.configure_item("modal_id3", show=False)
     pna.close_session()
     # Close the windows, reset GUI
-    dpg.delete_item("cal_window")
+    dpg.delete_item("menu_window")
 
 
 cal_window = None
 
-
-with dpg.window(label="Select Calibration", modal=True, show=False, tag="modal_id3", no_title_bar=True):
-    dpg.add_text("Enter the serial number of the DUT:")
+with dpg.window(label="Set Device Attenuation", modal=True, show=False, tag="modal_dut", no_title_bar=True):
+    dpg.add_text("Enter the DUT serial number and attenuation:")
     dpg.add_separator()
-    dpg.add_input_text(label="Serial Number", default_value='SN01', tag="serial_num")
-    with dpg.group(horizontal=True):
-        dpg.add_button(label="Measure", width=75, callback=start_cycle)
-        dpg.add_button(label="Cancel", width=75, callback=end_cycle)
+    dpg.add_input_text(label="Serial Number", default_value='SN01', tag="serial_number")
+    dpg.add_input_text(label="FTX Attenuation in dB", default_value='0', tag="ftx_attenuation")
+    dpg.add_input_text(label="FRX Attenuation in dB", default_value='0', tag="frx_attenuation")
+    dpg.add_button(label="Enter", width=75, callback=start_cycle)
 
-
-with dpg.window(label="Select Calibration", modal=True, show=False, tag="modal_id2", no_title_bar=True):
-    dpg.add_text("Would you like to calibrate the PNA?")
+with dpg.window(label="Set Calibration Power", modal=True, show=False, tag="modal_id", no_title_bar=True):
+    dpg.add_text("Enter the power level for the calibration:")
     dpg.add_separator()
     with dpg.group(horizontal=True):
-        dpg.add_button(label="Yes", width=75, callback=machine_cal)
-        dpg.add_button(label="No", width=75, callback=no_machine_cal)
+        dpg.add_input_text(label="Power level in dB", default_value='-50', tag="power_level")
+        dpg.add_button(label="Enter", width=75, callback=machine_cal)
 
+with dpg.window(label="Calibration", tag="cal_window", on_close=close):
+    dpg.add_text("This is the two-tone calibration program.", parent="cal_window")
+    dpg.add_text("Ensure USB connection between the computer and PNA, then click Start",
+                 parent="cal_window", tag="start_text")
+    dpg.add_button(label="START", callback=start_session, tag="start_session", parent="cal_window")
 
-with dpg.window(label="Select Calibration", modal=True, show=False, tag="modal_id", no_title_bar=True):
-    dpg.add_text("Would you like to calibrate the noise floor of the PNA?")
-    dpg.add_separator()
-    with dpg.group(horizontal=True):
-        dpg.add_button(label="Yes", width=75, callback=noise_floor)
-        dpg.add_button(label="No", width=75, callback=no_noise_floor)
-
-with dpg.window(label="Program Selection",tag="Primary Window"):
-    dpg.add_text("Choose from the options below")
-    dpg.add_button(label="Two Tone Calibration", callback=button_callback, tag="cal_button")
-    dpg.add_button(label="Y-factor Measurement", callback=button_callback, tag="yfac_button")
-    dpg.add_button(label="Dielectric Measurement")
+with dpg.window(label='Console', tag='console', width=1000, height=300, pos=[0, 300]):
+    dpg.add_text('Welcome to the console', indent=40)
 
 dpg.setup_dearpygui()
 dpg.show_viewport()
-dpg.set_primary_window("Primary Window", True)
+# TODO: re-enable re-size and adjust the console settings in the callback
+dpg.set_viewport_resizable(False)
+dpg.set_primary_window("cal_window", True)
 dpg.start_dearpygui()
 dpg.destroy_context()

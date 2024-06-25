@@ -7,6 +7,7 @@ import time
 from pyvisa.constants import VI_ATTR_TMO_VALUE
 import numpy as np
 import datetime
+import dearpygui.dearpygui as dpg
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 
@@ -273,36 +274,11 @@ def two_tone_test(file_path, input_power, serial_number):
     gain = primary_low - input_power
     IIp2 = OIP2 - gain
 
-    # Save the data
-    # Headers and info
-    # worksheet['A1'] = 'Data from Two-Tone Test'
-    # worksheet.merge_cells('A1:D1')
-
     # Read Date and Time from PC clock
     date_time_string = time.strftime('%m%d%Y %H:%M:%S')
     # Format Time
     t = datetime.datetime.strptime(date_time_string, "%m%d%Y %H:%M:%S")
     # TODO: revise the saving routine here
-    # worksheet['A2'] = str(t)
-    # worksheet['A3'] = serial_number
-    # worksheet['A4'] = input_power
-    #
-    # worksheet['A6'] = 'Frequency (Hz)'
-    # worksheet['B6'] = 'PL Log Mag(dBm)'
-    # worksheet['C6'] = 'PH Log Mag(dBm)'
-    # worksheet['D6'] = 'IM2 Log Mag(dBm)'
-    # worksheet['E6'] = 'IM3L Log Mag(dBm)'
-    # worksheet['F6'] = 'IM3H Log Mag(dBm)'
-    #
-    # worksheet['H6'] = 'OIP2'
-    # worksheet['I6'] = 'OIP3'
-    # worksheet['J6'] = 'Gain'
-    # worksheet['K6'] = 'IIP2'
-    #
-    # for i in range(len(x_axis)):
-    #     worksheet.append({1: x_axis[i], 2: primary_low[i], 3: primary_high[i], 4: second_intermod[i],
-    #                       5: third_intermod_low[i], 6: third_intermod_high[i], 8: OIP2[i], 9: OIP3[i],
-    #                       10: gain[i], 11: IIp2[i]})
 
     with open(file_path+serial_number, 'w') as f:
         f.write('Data from Two-Tone Test\n')
@@ -311,8 +287,8 @@ def two_tone_test(file_path, input_power, serial_number):
         f.write(input_power+'\n')
         f.write('Frequency (Hz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
                 'OIP2,OIP3,Gain,IIP2\n')
-        savetxt(f, zip(x_axis, primary_low, primary_high, second_intermod, third_intermod_low, third_intermod_high,
-                       OIP2, OIP3, gain, IIp2), delimiter=',', fmt='%f')
+        np.savetxt(f, zip(x_axis, primary_low, primary_high, second_intermod, third_intermod_low, third_intermod_high,
+                          OIP2, OIP3, gain, IIp2), delimiter=',', fmt='%f')
 
     # Plot and save the results
 
@@ -329,6 +305,7 @@ def connect_to_pna():
         session = resourceManager.open_resource(VISA_ADDRESS)
     except visa.Error as ex:
         print('Couldn\'t connect to \'%s\', exiting now...' % VISA_ADDRESS)
+        dpg.add_text('Couldn\'t connect to instrument, exiting now...', parent='console')
         # sys.exit()
         return 1
 
@@ -339,6 +316,7 @@ def connect_to_pna():
     # Send *IDN? and read the response
     idn = session.query('*IDN?')
 
+    dpg.add_text('Successful connection to PNA', parent='console')
     print('Connection successful: %s' % idn.rstrip('\n'))
     return 0
 
