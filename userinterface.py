@@ -86,8 +86,8 @@ class UserInterface:
         """Connects to the ftx and frx boards.
         """
 
-        dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)
-        # dev = usb.core.find(idVendor=1027, idProduct=24592)
+        # dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)
+        dev = usb.core.find(idVendor=1027, idProduct=24592)
         if dev is None:
             dpg.add_text("Could not find the USB device, check connection and try again.",
                          parent=self._console_window_id)
@@ -103,15 +103,15 @@ class UserInterface:
                          parent=self._console_window_id)
             return 1
 
-        self.i2c_receive = I2cController()
-        try:
-            self.i2c_receive.configure(dev, interface=1)
-            self.frx = FRX(self.i2c_receive)
-        except I2cIOError:
-            # Log the error to the console
-            dpg.add_text("Could not connect to FRX board, check connection and try again.",
-                         parent=self._console_window_id)
-            return 1
+        # self.i2c_receive = I2cController()
+        # try:
+        #     self.i2c_receive.configure(dev, interface=1)
+        #     self.frx = FRX(self.i2c_receive)
+        # except I2cIOError:
+        #     # Log the error to the console
+        #     dpg.add_text("Could not connect to FRX board, check connection and try again.",
+        #                  parent=self._console_window_id)
+        #     return 1
         return 0
 
     def start_calibration(self):
@@ -137,7 +137,7 @@ class UserInterface:
         #  Use the I2C connection to pass along the input values and read the SN
 
         err = 0
-        if self.i2c_transmit is None or self.i2c_receive is None:
+        if self.i2c_transmit is None:  # or self.i2c_receive is None:
             err = self.connect_ftx()
 
         if err == 0:
@@ -155,19 +155,19 @@ class UserInterface:
 
             new_value = dpg.get_value(dpg.get_item_children(self._device_window_id, slot=1)[5])
 
-            self.frx.set_atten(int(new_value * 4))
-            dpg.add_text("Setting output attenuation to " + str(new_value) + "...", parent=self._console_window_id)
-            time.sleep(0.1)
-            set_value = self.frx.atten.read() / 4
-            dpg.set_value(dpg.get_item_children(self._device_window_id, slot=1)[5], set_value)
-            if new_value != set_value:
-                dpg.add_text(
-                    "**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " + str(set_value) + ".",
-                    parent=self._console_window_id)
+            # self.frx.set_atten(int(new_value * 4))
+            # dpg.add_text("Setting output attenuation to " + str(new_value) + "...", parent=self._console_window_id)
+            # time.sleep(0.1)
+            # set_value = self.frx.atten.read() / 4
+            # dpg.set_value(dpg.get_item_children(self._device_window_id, slot=1)[5], set_value)
+            # if new_value != set_value:
+            #     dpg.add_text(
+            #         "**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " + str(set_value) + ".",
+            #         parent=self._console_window_id)
 
             #  Re-read the SN in case we connected to a different board since the last read/write
             # FRX SN
-            dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[6], label=self.frx.get_uuid())
+            # dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[6], label=self.frx.get_uuid())
             # FTX SN
             dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[11], label=self.ftx.get_uuid())
 
@@ -175,33 +175,56 @@ class UserInterface:
         #  Use I2C interface to read the attn values and SNs from FRX and FTX
 
         err = 0
-        if self.i2c_transmit is None or self.i2c_receive is None:
+        if self.i2c_transmit is None:  # or self.i2c_receive is None:
             err = self.connect_ftx()
 
         if err == 0:
-            dpg.set_value(dpg.get_item_children(self._device_window_id, slot=1)[5], str(self.frx.atten.read() / 4))
+            # dpg.set_value(dpg.get_item_children(self._device_window_id, slot=1)[5], str(self.frx.atten.read() / 4))
             dpg.set_value(dpg.get_item_children(self._device_window_id, slot=1)[9], str(self.ftx.atten.read() / 4))
-            dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[6], label=self.frx.get_uuid())
+            # dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[6], label=self.frx.get_uuid())
             dpg.configure_item(dpg.get_item_children(self._device_window_id, slot=1)[11], label=self.ftx.get_uuid())
 
     def start_measurement(self):
         # TODO: what if we start a measurement from a pre-calibrated machine
         dpg.add_text("Starting two-tone measurement...", parent=self._console_window_id)
-        self.pna.two_tone_test(self._last_cal)
-        #  TODO: update the graphs here
+        # self.pna.two_tone_test(self._last_cal)
+        self.pna.two_tone_test(dpg.get_value(dpg.get_item_children(self._calibration_window_id, slot=1)[3]))
+        if self.pna.x_axis is not None:
+            dpg.configure_item("gain plot", show=True)
+            dpg.add_line_series(self.pna.x_axis, self.pna.gain, parent="y_axis")
+            dpg.configure_item("IIP2 plot", show=True)
+            dpg.add_line_series(self.pna.x_axis, self.pna.IIp2, parent="iip2 y_axis")
+            dpg.configure_item("OIP2 plot", show=True)
+            dpg.add_line_series(self.pna.x_axis, self.pna.OIP2, parent="oip2 y_axis")
+            dpg.configure_item("OIP3 plot", show=True)
+            dpg.add_line_series(self.pna.x_axis, self.pna.OIP3, parent="oip3 y_axis")
 
-    def save_measurement(self):
+    def _save_callback(self, sender, app_data) -> None:
+        self.save_measurement(app_data.get('file_path_name'))
+
+    def save_measurement(self, filepath):
         frx_sn = None
         ftx_sn = None
+        ftx_atten = None
+        frx_atten = None
         if self.frx is not None:
             frx_sn = self.frx.get_uuid()
+            frx_atten = self.frx.atten.read()
         if self.ftx is not None:
             ftx_sn = self.ftx.get_uuid()
+            ftx_atten = self.ftx.atten.read()
 
-        self.pna.save_report(filepath="C:/Users/ckeeler/Documents/DSA2000/TestSoftware/", frx_sn=frx_sn, ftx_sn=ftx_sn)
+        self.pna.save_report(filepath=filepath, frx_sn=frx_sn, ftx_sn=ftx_sn, frx_atten=frx_atten, ftx_atten=ftx_atten)
 
     def _make_gui(self):
+        with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_callback,
+                             tag="save_as_dialog_id", width=700, height=400):
+            dpg.add_file_extension(".csv", color=(0, 255, 0, 255), custom_text="[CSV]")
+
         with dpg.window(label="Two Tone Test Program", tag="primary_window"):
+            with dpg.menu_bar():
+                with dpg.menu(label="File"):
+                    dpg.add_menu_item(label="Save Data", callback=lambda: dpg.show_item("save_as_dialog_id"))
             with dpg.group(horizontal=True):
                 with dpg.group(label="left side"):
                     self._connection_window_id = dpg.add_child_window(label="connection_window", height=100, width=200)
@@ -249,8 +272,8 @@ class UserInterface:
                     self._measure_window_id = dpg.add_child_window(label="measurement_window", height=50, width=200)
                     dpg.add_button(label="Measure", tag="start_measure_button", enabled=False,
                                    parent=self._measure_window_id, callback=self.start_measurement, indent=55, width=60)
-                    dpg.add_button(label="Save", tag="save_button", enabled=False, show=False,
-                                   parent=self._measure_window_id, callback=self.save_measurement, indent=55, width=60)
+                    # dpg.add_button(label="Save", tag="save_button", enabled=False, show=False,
+                    #                parent=self._measure_window_id, callback=self.save_measurement, indent=55, width=60)
                 with dpg.group(label='right side'):
                     self._console_window_id = dpg.add_child_window(label="console_window", height=200, width=750)
                     dpg.add_text("Welcome to the console for the two tone test program.",
@@ -259,6 +282,20 @@ class UserInterface:
                                  parent=self._console_window_id)
                     dpg.add_text("Begin by connecting to the PNA and (optionally) DUT.",
                                  parent=self._console_window_id)
+                    with dpg.child_window(tag="graph_window", width=750, height=400):
+                        with dpg.plot(tag="gain plot", label="Gain Data", width=690, height=300, show=False):
+                            dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
+                            dpg.add_plot_axis(dpg.mvYAxis, label="Gain (dB)", tag="y_axis")
+                        with dpg.plot(tag="IIP2 plot", label="IIP2 Data", width=690, height=300, show=False):
+                            dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
+                            dpg.add_plot_axis(dpg.mvYAxis, label="IIP2 (dBm)", tag="iip2 y_axis")
+                        with dpg.plot(tag="OIP2 plot", label="OIP2 Data", width=690, height=300, show=False):
+                            dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
+                            dpg.add_plot_axis(dpg.mvYAxis, label="OIP2 (dBm)", tag="oip2 y_axis")
+                        with dpg.plot(tag="OIP3 plot", label="OIP3 Data", width=690, height=300, show=False):
+                            dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
+                            dpg.add_plot_axis(dpg.mvYAxis, label="OIP3 (dBm)", tag="oip3 y_axis")
+
         # thread = Thread(target=self._listen_task)
         # thread.start()
         # self._threads.append(thread)

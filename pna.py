@@ -65,7 +65,8 @@ class PNA:
         self._third_intermod_low = None
         self._third_intermod_high = None
         # Change this variable to the address of your instrument
-        self.VISA_ADDRESS = 'USB0::0x0957::0x0118::MY48420936::0::INSTR'
+        # self.VISA_ADDRESS = 'USB0::0x0957::0x0118::MY48420936::0::INSTR'
+        self.VISA_ADDRESS = 'GPIB0::16::INSTR'
         self.popup = None
         self.input_pow = None
         self.x_axis = None
@@ -73,6 +74,7 @@ class PNA:
         self.OIP3 = None
         self.OIP2 = None
         self.IIp2 = None
+
 
     def connect_to_pna(self) -> int:
         try:
@@ -192,9 +194,12 @@ class PNA:
         resp = msgbox('Please connect the power sensor to the Power \nRef port of the power meter.'
                       + '\n' + 'Click OK to continue')
         if resp == 'OK':
-            print('We did it!')
+            # dpg.show_item(self.popup)
+            print("cool")
 
         self.source_power_cal()
+
+        # dpg.hide_item(self.popup)
 
         # Verify with the user that the power meter is plugged into the power combiner
         resp = msgbox('Sensor zeroing and calibration complete.'
@@ -212,6 +217,7 @@ class PNA:
         self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, -1)
         self._session.write('SOURce:POWer:CORRection:COLLect:DISPlay:STATe 1')  # default is ON
 
+        time.sleep(0.1)
         self.take_cal_sweep(1)
         time.sleep(0.1)
         self.take_cal_sweep(3)
@@ -252,6 +258,12 @@ class PNA:
 
         # Done with the power cal
         # print('Finished receiver power calibration.')
+        resp = msgbox('Finished receiver power calibration.'
+                      + '\n' + 'If applicable, place DUT between S port and port 2.'
+                      + '\n' + 'Click OK to return to home screen')
+
+        if resp == 'Yes':
+            print('We did it!')
 
     def copy_channel(self, to_channel, name, offset, multiplier):
         # Copy channel 1 to new channel
@@ -277,6 +289,7 @@ class PNA:
         # Start two-tone measurement
         if self.input_pow is None:
             print("uh-oh, the machine wasn't calibrated before running the tests")
+            self.input_pow = input_power
         # print('Starting two-tone measurement....')
 
         # This stuff doesn't need to be redone for every DUT switch
@@ -341,10 +354,12 @@ class PNA:
         self._session.write("FORM:DATA ASCII,0")  # Easy to implement but slow
 
         # # Ask for the data from the sweep, pick one of the locations to read
+        # Reset timeout value since this takes longer
+        self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, -1)
         self._primary_low = self._session.query_ascii_values("CALC1:DATA? FDATA", container=np.array)
 
         # Get frequency values
-        self.x_axis = self._session.query_ascii_values("CALC1:X?", container=np.array)
+        self.x_axis = (self._session.query_ascii_values("CALC1:X?", container=np.array))/1000000000
 
         self._session.write("INITiate3:IMMediate;*wai")
         self._session.write("CALCulate3:PARameter:SELect 'PH'")
@@ -362,6 +377,9 @@ class PNA:
         self._session.write("CALCulate5:PARameter:SELect 'IM3H'")
         self._third_intermod_high = self._session.query_ascii_values("CALC5:DATA? FDATA", container=np.array)
 
+        # Reset the timeout
+        self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, 4000)
+
         # Do math on the signals
 
         # OIP2 = PL + PH - IM2
@@ -373,7 +391,7 @@ class PNA:
         self.gain = self._primary_low - input_power
         self.IIp2 = self.OIP2 - self.gain
 
-    def save_report(self, filepath, frx_sn=None, ftx_sn=None):
+    def save_report(self, filepath, frx_sn=None, ftx_sn=None, frx_atten=None, ftx_atten=None):
         # Read Date and Time from PC clock
         date_time_string = time.strftime('%m%d%Y %H:%M:%S')
         # Format Time
@@ -386,14 +404,18 @@ class PNA:
             if frx_sn is not None:
                 f.write('FRX SN\n')
                 f.write(frx_sn + '\n')
+                f.write('FRX Attenuation\n')
+                f.write(frx_atten + '\n')
             if ftx_sn is not None:
                 f.write('FTX SN\n')
                 f.write(ftx_sn + '\n')
+                f.write('FTX Attenuation\n')
+                f.write(ftx_atten + '\n')
             f.write('PNA calibration power\n')
-            f.write(self.input_pow + '\n')
+            f.write(str(self.input_pow) + '\n')
             f.write(
-                'Frequency (Hz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
+                'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
                 'OIP2,OIP3,Gain,IIP2\n')
-            np.savetxt(f, zip(self.x_axis, self._primary_low, self._primary_high, self._second_intermod,
-                              self._third_intermod_low, self._third_intermod_high, self.OIP2, self.OIP3, self.gain,
-                              self.IIp2), delimiter=',', fmt='%f')
+            np.savetxt(f, np.array(list(zip(self.x_axis, self._primary_low, self._primary_high, self._second_intermod,
+                       self._third_intermod_low, self._third_intermod_high, self.OIP2, self.OIP3, self.gain,
+                       self.IIp2))), delimiter=',', fmt='%f')
