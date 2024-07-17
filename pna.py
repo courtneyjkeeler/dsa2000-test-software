@@ -1,11 +1,9 @@
 import pyvisa as visa
-import sys
 import time
 from pyvisa.constants import VI_ATTR_TMO_VALUE
-import numpy as np
-import datetime
 import dearpygui.dearpygui as dpg
 import inspect
+import numpy as np
 
 dpg_callback_queue = []
 
@@ -17,7 +15,9 @@ def msgbox(message, extra_button=False):
         resp = dpg.get_item_label(sender)
         dpg.hide_item(popup)
 
+    # print(dpg.last_item())
     with dpg.popup(parent=dpg.last_item(), modal=True) as popup:
+        # print(dpg.get_item_parent(popup))
         dpg.add_text(message)
         if extra_button:
             with dpg.group(horizontal=True):
@@ -31,6 +31,18 @@ def msgbox(message, extra_button=False):
     while not resp:
         handle_callbacks_and_render_one_frame()
     return resp
+
+
+def show_wait(message) -> None:
+
+    # print(dpg.last_item())
+    with dpg.window(tag="wait_popup"):
+        # print(dpg.get_item_parent(popup))
+        dpg.add_text(message)
+
+
+def hide_wait():
+    dpg.hide_item("wait_popup")
 
 
 def run_callbacks():
@@ -53,17 +65,41 @@ def handle_callbacks_and_render_one_frame():
     dpg.render_dearpygui_frame()
 
 
+def _show_popup_window(message) -> None:
+    """Displays a small popup window with a message to tell users to wait.
+    """
+    if message is None:
+        return
+    if dpg.does_item_exist("blocking_popup"):
+        dpg.configure_item("blocking_popup", width=150, height=50,
+                           pos=((dpg.get_viewport_width() - 150) // 2, (dpg.get_viewport_height() - 50) // 2))
+        dpg.configure_item("blocking_popup", show=True)
+        dpg.set_value("blocking_popup_text", message)
+        # dpg.set_item_user_data("blocking_popup_button", user_data)
+        return
+    with dpg.window(tag="blocking_popup", width=150, height=50,
+                    pos=((dpg.get_viewport_width() - 150) // 2, (dpg.get_viewport_height() - 50) // 2)):
+        dpg.add_text(message, tag="blocking_popup_text")
+        # dpg.add_input_text(multiline=True, tag='multiline_input')
+        # dpg.add_button(label="OK", tag="blocking_popup_button", user_data=user_data,
+        #                callback=self._save_comments)
+
+
+def _hide_popup_window() -> None:
+    dpg.delete_item('blocking_popup')
+
+
 class PNA:
 
     def __init__(self):
         self._session = None
         self._resourceManager = None
         self._primaryNum = None
-        self._primary_low = None
-        self._primary_high = None
-        self._second_intermod = None
-        self._third_intermod_low = None
-        self._third_intermod_high = None
+        self.primary_low = None
+        self.primary_high = None
+        self.second_intermod = None
+        self.third_intermod_low = None
+        self.third_intermod_high = None
         # Change this variable to the address of your instrument
         # self.VISA_ADDRESS = 'USB0::0x0957::0x0118::MY48420936::0::INSTR'
         self.VISA_ADDRESS = 'GPIB0::16::INSTR'
@@ -75,6 +111,8 @@ class PNA:
         self.OIP2 = None
         self.IIp2 = None
 
+        with dpg.window(modal=True, show=False, tag="modal_id", no_title_bar=True):
+            dpg.add_text("Please wait....")
 
     def connect_to_pna(self) -> int:
         try:
@@ -145,7 +183,7 @@ class PNA:
             self._session.write(
                 "SOURce:POWer" + str(port) + ":CORRection:COLLect:ACQuire PMETer,'ASENSOR',SYNChronous;*OPC")
             # print('Starting cal sweep on port ' + str(port) + '....')
-            time.sleep(0.1)
+            time.sleep(1)
             self._session.clear()
 
             # Ask the user if they want to save or repeat
@@ -194,12 +232,12 @@ class PNA:
         resp = msgbox('Please connect the power sensor to the Power \nRef port of the power meter.'
                       + '\n' + 'Click OK to continue')
         if resp == 'OK':
-            # dpg.show_item(self.popup)
+            dpg.configure_item("modal_id", show=True)
             print("cool")
 
         self.source_power_cal()
 
-        # dpg.hide_item(self.popup)
+        dpg.configure_item("modal_id", show=False)
 
         # Verify with the user that the power meter is plugged into the power combiner
         resp = msgbox('Sensor zeroing and calibration complete.'
@@ -356,26 +394,26 @@ class PNA:
         # # Ask for the data from the sweep, pick one of the locations to read
         # Reset timeout value since this takes longer
         self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, -1)
-        self._primary_low = self._session.query_ascii_values("CALC1:DATA? FDATA", container=np.array)
+        self.primary_low = self._session.query_ascii_values("CALC1:DATA? FDATA", container=np.array)
 
         # Get frequency values
         self.x_axis = (self._session.query_ascii_values("CALC1:X?", container=np.array))/1000000000
 
         self._session.write("INITiate3:IMMediate;*wai")
         self._session.write("CALCulate3:PARameter:SELect 'PH'")
-        self._primary_high = self._session.query_ascii_values("CALC3:DATA? FDATA", container=np.array)
+        self.primary_high = self._session.query_ascii_values("CALC3:DATA? FDATA", container=np.array)
 
         self._session.write("INITiate2:IMMediate;*wai")
         self._session.write("CALCulate2:PARameter:SELect 'IM2'")
-        self._second_intermod = self._session.query_ascii_values("CALC2:DATA? FDATA", container=np.array)
+        self.second_intermod = self._session.query_ascii_values("CALC2:DATA? FDATA", container=np.array)
 
         self._session.write("INITiate4:IMMediate;*wai")
         self._session.write("CALCulate4:PARameter:SELect 'IM3L'")
-        self._third_intermod_low = self._session.query_ascii_values("CALC4:DATA? FDATA", container=np.array)
+        self.third_intermod_low = self._session.query_ascii_values("CALC4:DATA? FDATA", container=np.array)
 
         self._session.write("INITiate5:IMMediate;*wai")
         self._session.write("CALCulate5:PARameter:SELect 'IM3H'")
-        self._third_intermod_high = self._session.query_ascii_values("CALC5:DATA? FDATA", container=np.array)
+        self.third_intermod_high = self._session.query_ascii_values("CALC5:DATA? FDATA", container=np.array)
 
         # Reset the timeout
         self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, 4000)
@@ -383,39 +421,11 @@ class PNA:
         # Do math on the signals
 
         # OIP2 = PL + PH - IM2
-        self.OIP2 = self._primary_low + self._primary_high - self._second_intermod
+        self.OIP2 = self.primary_low + self.primary_high - self.second_intermod
         # OIP3 = max((2*PL+PH-IM3L)/2, (PL+2*PH-IM3H)/2)
-        self.OIP3 = np.maximum((2 * self._primary_low + self._primary_high - self._third_intermod_low) / 2,
-                               (self._primary_low + 2 * self._primary_high - self._third_intermod_high) / 2)
+        self.OIP3 = np.maximum((2 * self.primary_low + self.primary_high - self.third_intermod_low) / 2,
+                               (self.primary_low + 2 * self.primary_high - self.third_intermod_high) / 2)
         # gain = PL - inputPow
-        self.gain = self._primary_low - input_power
+        self.gain = self.primary_low - input_power
         self.IIp2 = self.OIP2 - self.gain
 
-    def save_report(self, filepath, frx_sn=None, ftx_sn=None, frx_atten=None, ftx_atten=None):
-        # Read Date and Time from PC clock
-        date_time_string = time.strftime('%m%d%Y %H:%M:%S')
-        # Format Time
-        t = datetime.datetime.strptime(date_time_string, "%m%d%Y %H:%M:%S")
-        # TODO: revise the saving routine here
-
-        with open(filepath, 'w') as f:
-            f.write('Two-Tone Test Report\n')
-            f.write(str(t) + '\n')
-            if frx_sn is not None:
-                f.write('FRX SN\n')
-                f.write(frx_sn + '\n')
-                f.write('FRX Attenuation\n')
-                f.write(frx_atten + '\n')
-            if ftx_sn is not None:
-                f.write('FTX SN\n')
-                f.write(ftx_sn + '\n')
-                f.write('FTX Attenuation\n')
-                f.write(ftx_atten + '\n')
-            f.write('PNA calibration power\n')
-            f.write(str(self.input_pow) + '\n')
-            f.write(
-                'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
-                'OIP2,OIP3,Gain,IIP2\n')
-            np.savetxt(f, np.array(list(zip(self.x_axis, self._primary_low, self._primary_high, self._second_intermod,
-                       self._third_intermod_low, self._third_intermod_high, self.OIP2, self.OIP3, self.gain,
-                       self.IIp2))), delimiter=',', fmt='%f')
