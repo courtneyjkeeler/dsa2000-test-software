@@ -21,12 +21,18 @@ def is_pna_connected():
     return state.get("enabled")
 
 
+def clear_graph():
+    dpg.delete_item("y_axis", children_only=True, slot=1)
+    dpg.delete_item("iip2 y_axis", children_only=True, slot=1)
+    dpg.delete_item("oip2 y_axis", children_only=True, slot=1)
+    dpg.delete_item("oip3 y_axis", children_only=True, slot=1)
+
+
 class UserInterface:
     VID = 0x0403
     PID = 0x6048
 
     def __init__(self):
-        self.running = False
         self._console_window_id = 0
         self.i2c_transmit = None
         self.ftx = None
@@ -45,7 +51,6 @@ class UserInterface:
         self.opt_attn = "None"
 
     def run(self):
-        self.running = True
         dpg.create_context()
         dpg.create_viewport(title='Two Tone Test Automated Program', width=1000, height=700)
         dpg.setup_dearpygui()
@@ -153,10 +158,10 @@ class UserInterface:
         # Enable all the control inputs
         dpg.configure_item("frx_output_attn", enabled=True)
 
-        dpg.configure_item(self._frx_sn_id, color=(255, 255, 255))
-        dpg.configure_item(self._frx_rfmon_id, color=(255, 255, 255))
-        dpg.configure_item(self._pd_current_id, color=(255, 255, 255))
-        dpg.configure_item(self._temp_id, color=(255, 255, 255))
+        # dpg.configure_item(self._frx_sn_id, color=(255, 255, 255))
+        # dpg.configure_item(self._frx_rfmon_id, color=(255, 255, 255))
+        # dpg.configure_item(self._pd_current_id, color=(255, 255, 255))
+        # dpg.configure_item(self._temp_id, color=(255, 255, 255))
 
         self._update_all_frx()
 
@@ -172,10 +177,10 @@ class UserInterface:
         add_text_to_console("FRX board connection closed. OK to unplug.")
         # Disable all the settings inputs
         dpg.configure_item("frx_output_attn", enabled=False)
-        dpg.configure_item(self._frx_sn_id, color=(37, 37, 37))
-        dpg.configure_item(self._frx_rfmon_id, color=(37, 37, 37))
-        dpg.configure_item(self._pd_current_id, color=(37, 37, 37))
-        dpg.configure_item(self._temp_id, color=(37, 37, 37))
+        # dpg.configure_item(self._frx_sn_id, color=(37, 37, 37))
+        # dpg.configure_item(self._frx_rfmon_id, color=(37, 37, 37))
+        # dpg.configure_item(self._pd_current_id, color=(37, 37, 37))
+        # dpg.configure_item(self._temp_id, color=(37, 37, 37))
 
     def _update_frx_attn(self) -> None:
         new_value = dpg.get_value("frx_output_attn")
@@ -249,11 +254,11 @@ class UserInterface:
         dpg.configure_item("ftx_input_attn", enabled=True)
         dpg.configure_item("ftx_laser_current", enabled=True)
 
-        dpg.configure_item(self._ftx_sn_id, color=(255, 255, 255))
-        dpg.configure_item(self._ftx_rfmon_id, color=(255, 255, 255))
-        # dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
-        # dpg.configure_item(self._laser_current_id, color=(255, 255, 255))
-        dpg.configure_item(self._laserpd_mon_id, color=(255, 255, 255))
+        # dpg.configure_item(self._ftx_sn_id, color=(255, 255, 255))
+        # dpg.configure_item(self._ftx_rfmon_id, color=(255, 255, 255))
+        # # dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
+        # # dpg.configure_item(self._laser_current_id, color=(255, 255, 255))
+        # dpg.configure_item(self._laserpd_mon_id, color=(255, 255, 255))
 
         self._update_all_ftx()
 
@@ -273,11 +278,11 @@ class UserInterface:
         dpg.configure_item("lna_bias_checkbox", enabled=False)
         dpg.configure_item("ftx_input_attn", enabled=False)
         dpg.configure_item("ftx_laser_current", enabled=False)
-        dpg.configure_item(self._ftx_sn_id, color=(37, 37, 37))
-        dpg.configure_item(self._ftx_rfmon_id, color=(37, 37, 37))
-        dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
-        # dpg.configure_item(self._laser_current_id, color=(37, 37, 37))
-        dpg.configure_item(self._laserpd_mon_id, color=(37, 37, 37))
+        # dpg.configure_item(self._ftx_sn_id, color=(37, 37, 37))
+        # dpg.configure_item(self._ftx_rfmon_id, color=(37, 37, 37))
+        # dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
+        # # dpg.configure_item(self._laser_current_id, color=(37, 37, 37))
+        # dpg.configure_item(self._laserpd_mon_id, color=(37, 37, 37))
 
     def _update_mon_ftx(self) -> None:
         """ Reads all the monitor data and updates the
@@ -340,12 +345,12 @@ class UserInterface:
         if value:
             add_text_to_console("LNA bias enabled.")
             # dpg.add_text("LNA bias enabled.", parent="console_window")
-            dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
+            # dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
             dpg.set_value(self._lna_current_id, str(self.ftx.get_ld_current()))
         else:
             add_text_to_console("LNA bias disabled.")
             # dpg.add_text("LNA bias disabled.", parent="console_window")
-            dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
+            # dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
 
     def _show_popup_window(self, sender=None, data=None, user_data=None) -> None:
         """Callback for when certain buttons are clicked.
@@ -357,12 +362,16 @@ class UserInterface:
         if message is None:
             return
         if dpg.does_item_exist("blocking_popup"):
-            dpg.configure_item("blocking_popup", width=150, height=50,
+            dpg.configure_item("blocking_popup", width=250, height=100,
                                pos=((dpg.get_viewport_width() - 150) // 2, (dpg.get_viewport_height() - 50) // 2))
             dpg.configure_item("blocking_popup", show=True)
             dpg.set_value("blocking_popup_text", message)
             if message == "Add comments below:":
-                dpg.set_value('multiline_input', self.comments)
+                if self.comments == "":
+                    dpg.set_value('multiline_input', 'Fiber Length:\nBias T direct to laser\nLaser SN:\n'
+                                  + 'Laser current:\nLaser wavelength:\nBias T direct to PD\nPD SN:\nPD current:')
+                else:
+                    dpg.set_value('multiline_input', self.comments)
             else:
                 dpg.set_value('multiline_input', self.opt_attn)
             dpg.set_item_user_data("blocking_popup_button", user_data)
@@ -372,7 +381,11 @@ class UserInterface:
             dpg.add_text(message, tag="blocking_popup_text")
             dpg.add_input_text(multiline=True, tag='multiline_input')
             if message == "Add comments below:":
-                dpg.set_value('multiline_input', self.comments)
+                if self.comments == "":
+                    dpg.set_value('multiline_input', 'Fiber Length:\nBias T direct to laser\nLaser SN:\n'
+                                  + 'Laser current:\nLaser wavelength:\nBias T direct to PD\nPD SN:\nPD current:')
+                else:
+                    dpg.set_value('multiline_input', self.comments)
             else:
                 dpg.set_value('multiline_input', self.opt_attn)
             dpg.add_button(label="OK", tag="blocking_popup_button", user_data=user_data,
@@ -431,11 +444,11 @@ class UserInterface:
             # TODO: update for multiple runs of data
             f.write(
                 'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
-                'OIP2,OIP3,Gain,IIP2\n')
+                'OIP2,OIP3,Gain,IIP2,IIP3\n')
             np.savetxt(f, np.array(list(zip(self.pna.x_axis, self.pna.primary_low, self.pna.primary_high,
                                             self.pna.second_intermod, self.pna.third_intermod_low,
                                             self.pna.third_intermod_high, self.pna.OIP2, self.pna.OIP3, self.pna.gain,
-                                            self.pna.IIp2))), delimiter=',', fmt='%f')
+                                            self.pna.IIp2, self.pna.IIp3))), delimiter=',', fmt='%f')
 
     def _make_gui(self):
         with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_callback,
@@ -472,29 +485,31 @@ class UserInterface:
                         dpg.add_text("Source Power (dBm)")
                         dpg.add_input_float(tag="cal_input", step=0, on_enter=True,
                                             callback=lambda: print('Check if input is valid'), min_value=-50,
-                                            min_clamped=True, max_value=0, max_clamped=True)
+                                            min_clamped=True, max_value=10, max_clamped=True)
                         dpg.add_spacer(height=10)
                         dpg.add_button(label="Start", tag="start_cal_button", enabled=False,
                                        callback=self.start_calibration, indent=55, width=60)
-                    with dpg.child_window(label="measurement_window", height=50, width=200):
+                    with dpg.child_window(label="measurement_window", height=100, width=200):
                         dpg.add_button(label="Measure", tag="start_measure_button", enabled=False,
                                        callback=self.start_measurement, indent=55, width=60)
+                        dpg.add_button(label="Clear", tag="clear_graph_button", enabled=True,
+                                       callback=clear_graph, indent=55, width=60)
                 with dpg.group(label='right side'):
                     with dpg.child_window(label="console_window", height=200, width=750) as self._console_window_id:
                         dpg.add_text("Welcome to the console for the two tone test program.")
                         dpg.add_text("Check here for status messages and important setup instructions.")
                         dpg.add_text("Begin by connecting to the PNA and (optionally) DUT.")
                     with dpg.child_window(tag="graph_window", width=750, height=400):
-                        with dpg.plot(tag="gain plot", label="Gain Data", width=690, height=300, show=False):
+                        with dpg.plot(tag="gain plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
                             dpg.add_plot_axis(dpg.mvYAxis, label="Gain (dB)", tag="y_axis")
-                        with dpg.plot(tag="IIP2 plot", label="IIP2 Data", width=690, height=300, show=False):
+                        with dpg.plot(tag="IIP2 plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
                             dpg.add_plot_axis(dpg.mvYAxis, label="IIP2 (dBm)", tag="iip2 y_axis")
-                        with dpg.plot(tag="OIP2 plot", label="OIP2 Data", width=690, height=300, show=False):
+                        with dpg.plot(tag="OIP2 plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
                             dpg.add_plot_axis(dpg.mvYAxis, label="OIP2 (dBm)", tag="oip2 y_axis")
-                        with dpg.plot(tag="OIP3 plot", label="OIP3 Data", width=690, height=300, show=False):
+                        with dpg.plot(tag="OIP3 plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
                             dpg.add_plot_axis(dpg.mvYAxis, label="OIP3 (dBm)", tag="oip3 y_axis")
 
@@ -511,32 +526,31 @@ class UserInterface:
                                                pos=[180, 30])
                                 dpg.add_button(label="Disconnect", tag="ftx_disconnect_button",
                                                callback=self._disconnect_ftx, show=False, pos=[180, 30])
-                            dpg.add_text("LNA Bias Enable", color=(37, 37, 37))
+                            dpg.add_text("LNA Bias Enable")#, color=(37, 37, 37))
                             dpg.add_checkbox(label="", tag="lna_bias_checkbox", enabled=False,
                                              callback=self._lna_bias_checked)
                             dpg.add_spacer()
-                            dpg.add_text("LNA Current (mA)", color=(37, 37, 37))
-                            self._lna_current_id = dpg.add_text("0.0", tag="ftx_lna_current", color=(69, 69, 69))
+                            dpg.add_text("LNA Current (mA)")#, color=(37, 37, 37))
+                            self._lna_current_id = dpg.add_text("0.0", tag="ftx_lna_current")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("RF Monitor (dBm)", color=(37, 37, 37))
-                            self._ftx_rfmon_id = dpg.add_text("0.0", tag="ftx_rf_mon", color=(69, 69, 69))
+                            dpg.add_text("RF Monitor (dBm)")#, color=(37, 37, 37))
+                            self._ftx_rfmon_id = dpg.add_text("0.0", tag="ftx_rf_mon")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("Input Attenuation (dB)", color=(37, 37, 37))
+                            dpg.add_text("Input Attenuation (dB)")#, color=(37, 37, 37))
                             dpg.add_input_float(tag="ftx_input_attn", enabled=False, default_value=0, max_value=31.25,
                                                 min_value=0, step=0.25, callback=self._update_ftx_attn, on_enter=True,
                                                 min_clamped=True, max_clamped=True, format='%.2f')
                             dpg.add_spacer()
-                            dpg.add_text("Laser Current (mA)", color=(37, 37, 37))
-                            # self._laser_current_id = dpg.add_text("0.0", tag="ftx_laser_current", color=(69,69,69))
+                            dpg.add_text("Laser Current (mA)")#, color=(37, 37, 37))
                             dpg.add_input_float(tag="ftx_laser_current", enabled=False, default_value=25, max_value=50,
                                                 min_value=0, step=0.25, callback=self._update_ftx_laser, on_enter=True,
                                                 min_clamped=True, max_clamped=True, format='%.2f')
                             dpg.add_spacer()
-                            dpg.add_text("Photodiode Current (mA)", color=(37, 37, 37))
-                            self._laserpd_mon_id = dpg.add_text("0.0", tag="ftx_laserpd_mon", color=(69, 69, 69))
+                            dpg.add_text("Photodiode Current (mA)")#, color=(37, 37, 37))
+                            self._laserpd_mon_id = dpg.add_text("0.0", tag="ftx_laserpd_mon")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("Serial Number", color=(37, 37, 37))
-                            self._ftx_sn_id = dpg.add_text("0x0000", tag="ftx_sn", color=(69, 69, 69))
+                            dpg.add_text("Serial Number")#, color=(37, 37, 37))
+                            self._ftx_sn_id = dpg.add_text("0x0000", tag="ftx_sn")#, color=(69, 69, 69))
                             dpg.add_spacer()
                 with dpg.group(label="right_side"):
                     with dpg.child_window(tag="FRX", width=400, height=440):
@@ -547,29 +561,28 @@ class UserInterface:
                                                pos=[180, 30])
                                 dpg.add_button(label="Disconnect", tag="frx_disconnect_button",
                                                callback=self._disconnect_frx, show=False, pos=[180, 30])
-                            dpg.add_text("Photodiode Current (mA)", color=(37, 37, 37))
-                            self._pd_current_id = dpg.add_text("0.0", tag="frx_pd_current", color=(69, 69, 69))
+                            dpg.add_text("Photodiode Current (mA)")#, color=(37, 37, 37))
+                            self._pd_current_id = dpg.add_text("0.0", tag="frx_pd_current")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("RF Monitor (dBm)", color=(37, 37, 37))
-                            self._frx_rfmon_id = dpg.add_text("0.0", tag="frx_rf_mon", color=(69, 69, 69))
+                            dpg.add_text("RF Monitor (dBm)")#, color=(37, 37, 37))
+                            self._frx_rfmon_id = dpg.add_text("0.0", tag="frx_rf_mon")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("Output Attenuation (dB)", color=(37, 37, 37))
+                            dpg.add_text("Output Attenuation (dB)")#, color=(37, 37, 37))
                             dpg.add_input_float(tag="frx_output_attn", enabled=False, default_value=0, max_value=31.25,
                                                 min_value=0, step=0.25, on_enter=True, callback=self._update_frx_attn,
                                                 min_clamped=True, max_clamped=True, format='%.2f')
                             dpg.add_spacer()
-                            dpg.add_text("Temperature (C)", color=(37, 37, 37))
-                            self._temp_id = dpg.add_text("0.0", tag="frx_temp", color=(69, 69, 69))
+                            dpg.add_text("Temperature (C)")#, color=(37, 37, 37))
+                            self._temp_id = dpg.add_text("0.0", tag="frx_temp")#, color=(69, 69, 69))
                             dpg.add_spacer()
-                            dpg.add_text("Serial Number", color=(37, 37, 37))
-                            self._frx_sn_id = dpg.add_text("0x0000", tag="frx_sn", color=(69, 69, 69))
+                            dpg.add_text("Serial Number")#, color=(37, 37, 37))
+                            self._frx_sn_id = dpg.add_text("0x0000", tag="frx_sn")#, color=(69, 69, 69))
                             dpg.add_spacer()
             with dpg.child_window(tag="console_window", width=810, height=110):
                 dpg.add_text("Welcome to the console.")
                 dpg.add_text("Connect to the RF over Fiber boards to begin.")
 
     def _exit_callback(self):
-        self.running = False
         if is_pna_connected():
             self.pna.close_session()
             dpg.add_text('Disconnecting from the PNA...', parent=self._console_window_id)
@@ -578,8 +591,10 @@ class UserInterface:
             dpg.add_text("Disconnecting from FRX board...",
                          parent=self._console_window_id)
             self.i2c_receive.close()
+            self.frx = None
         if self.ftx is not None:
             dpg.add_text("Disconnecting from FTX board...",
                          parent=self._console_window_id)
             self.i2c_transmit.close()
+            self.ftx = None
 

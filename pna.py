@@ -110,6 +110,7 @@ class PNA:
         self.OIP3 = None
         self.OIP2 = None
         self.IIp2 = None
+        self.IIp3 = None
 
         with dpg.window(modal=True, show=False, tag="modal_id", no_title_bar=True):
             dpg.add_text("Please wait....")
@@ -187,7 +188,7 @@ class PNA:
             self._session.clear()
 
             # Ask the user if they want to save or repeat
-            resp = msgbox('Cal Sweep finished. Save results?', extra_button=True)
+            resp = msgbox('WAIT FOR CAL SWEEP TO FINISH\nSave results?', extra_button=True)
 
             if resp == 'Yes':
                 calibrated = True
@@ -206,6 +207,7 @@ class PNA:
 
     def calibration(self, input_power):
         self.input_pow = input_power
+        self._primaryNum = None
         # Delete all traces, measurements, and windows that might be open
         self._session.write(':SYSTem:PRESet')
 
@@ -215,7 +217,7 @@ class PNA:
         self._session.write('SENSe:SWEep:POINts 401')
 
         # Set the IF bandwidth
-        self._session.write('SENSe:BANDwidth:RESolution 100')  # 100 Hz
+        self._session.write('SENSe:BANDwidth:RESolution 10')  # 100 Hz
 
         # Set calibration level
         # By default the ports are coupled but we'll write to each anyway
@@ -260,9 +262,6 @@ class PNA:
         time.sleep(0.1)
         self.take_cal_sweep(3)
 
-        # Reset the timeout value to the default
-        self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, 4000)
-
         # Done with power meter, tell the user to disconnect
         # self.popup = BlockingPopupWindow('Done with the power meter. Disconnect the sensor from the combiner.'
         #                                  + '\n' + 'Connect Port 2 to the S port of the combiner.'
@@ -291,8 +290,8 @@ class PNA:
         self._session.query(':SENSe:CORRection:COLLect:ACQuire POWer;*OPC?')
         # Apply
         self._session.write(':SENSe:CORRection:COLLect:SAVE')
-
-        # session.write(":CALCulate:PARameter:SELect 'PL'")
+        # Reset the timeout value to the default
+        self._session.set_visa_attribute(VI_ATTR_TMO_VALUE, 4000)
 
         # Done with the power cal
         # print('Finished receiver power calibration.')
@@ -310,6 +309,8 @@ class PNA:
         self._session.write(":CALCulate" + str(to_channel) + ":PARameter:DEFine:EXTended '" + name + "','B, 1'")
         # Display measurement as trace
         self._session.write(":DISPlay:WINDow:TRACe" + str(to_channel + 1) + ":FEED '" + name + "'")
+        # adjust offset
+        self._session.write("DISPlay:WINDow:TRACe" + str(to_channel + 1) + ":Y:SCALe:RLEVel -50")
         # Delete the S11 measurement on trace 1
         self._session.write(":DISPlay:WINDow:TRACe1:DELete")
         self._session.write(":CALCulate" + str(to_channel) + ":PARameter:SELect '" + name + "'")
@@ -428,4 +429,5 @@ class PNA:
         # gain = PL - inputPow
         self.gain = self.primary_low - input_power
         self.IIp2 = self.OIP2 - self.gain
+        self.IIp3 = self.OIP3 - self.gain
 
