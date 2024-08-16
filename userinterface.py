@@ -24,8 +24,7 @@ def is_pna_connected():
 def clear_graph():
     dpg.delete_item("y_axis", children_only=True, slot=1)
     dpg.delete_item("iip2 y_axis", children_only=True, slot=1)
-    dpg.delete_item("oip2 y_axis", children_only=True, slot=1)
-    dpg.delete_item("oip3 y_axis", children_only=True, slot=1)
+    dpg.delete_item("iip3 y_axis", children_only=True, slot=1)
 
 
 class UserInterface:
@@ -47,7 +46,6 @@ class UserInterface:
         self._pd_current_id = 0
         self._frx_sn_id = 0
         self._temp_id = 0
-        self.comments = ""
         self.opt_attn = "None"
 
     def run(self):
@@ -126,10 +124,8 @@ class UserInterface:
             dpg.add_line_series(self.pna.x_axis, self.pna.gain, parent="y_axis")
             dpg.configure_item("IIP2 plot", show=True)
             dpg.add_line_series(self.pna.x_axis, self.pna.IIp2, parent="iip2 y_axis")
-            dpg.configure_item("OIP2 plot", show=True)
-            dpg.add_line_series(self.pna.x_axis, self.pna.OIP2, parent="oip2 y_axis")
-            dpg.configure_item("OIP3 plot", show=True)
-            dpg.add_line_series(self.pna.x_axis, self.pna.OIP3, parent="oip3 y_axis")
+            dpg.configure_item("IIP3 plot", show=True)
+            dpg.add_line_series(self.pna.x_axis, self.pna.IIp3, parent="iip3 y_axis")
 
     def _connect_frx(self, sender=None, data=None) -> None:
         """Callback for clicking the frx connect button.
@@ -366,37 +362,20 @@ class UserInterface:
                                pos=((dpg.get_viewport_width() - 150) // 2, (dpg.get_viewport_height() - 50) // 2))
             dpg.configure_item("blocking_popup", show=True)
             dpg.set_value("blocking_popup_text", message)
-            if message == "Add comments below:":
-                if self.comments == "":
-                    dpg.set_value('multiline_input', 'Fiber Length:\nBias T direct to laser\nLaser SN:\n'
-                                  + 'Laser current:\nLaser wavelength:\nBias T direct to PD\nPD SN:\nPD current:')
-                else:
-                    dpg.set_value('multiline_input', self.comments)
-            else:
-                dpg.set_value('multiline_input', self.opt_attn)
+            dpg.set_value('multiline_input', self.opt_attn)
             dpg.set_item_user_data("blocking_popup_button", user_data)
             return
         with dpg.window(tag="blocking_popup", width=150, height=50,
                         pos=((dpg.get_viewport_width() - 150) // 2, (dpg.get_viewport_height() - 50) // 2)):
             dpg.add_text(message, tag="blocking_popup_text")
             dpg.add_input_text(multiline=True, tag='multiline_input')
-            if message == "Add comments below:":
-                if self.comments == "":
-                    dpg.set_value('multiline_input', 'Fiber Length:\nBias T direct to laser\nLaser SN:\n'
-                                  + 'Laser current:\nLaser wavelength:\nBias T direct to PD\nPD SN:\nPD current:')
-                else:
-                    dpg.set_value('multiline_input', self.comments)
-            else:
-                dpg.set_value('multiline_input', self.opt_attn)
+            dpg.set_value('multiline_input', self.opt_attn)
             dpg.add_button(label="OK", tag="blocking_popup_button", user_data=user_data,
                            callback=self._save_comments)
 
     def _save_comments(self, sender=None, data=None, user_data=None) -> None:
         message = user_data.get("msg", None)
-        if message == "Add comments below:":
-            self.comments = dpg.get_value('multiline_input')
-        else:
-            self.opt_attn = dpg.get_value('multiline_input')
+        self.opt_attn = dpg.get_value('multiline_input')
         dpg.delete_item('blocking_popup')
 
     def _save_callback(self, sender, app_data) -> None:
@@ -408,7 +387,7 @@ class UserInterface:
             f.write('Date,' + time.strftime("%m/%d/%Y", time.localtime()) + '\n')
             f.write('Time,' + time.strftime("%H:%M:%S", time.localtime()) + '\n')
             f.write('Optical Attenuation,' + self.opt_attn + '\n')
-            f.write('Comments,' + self.comments + '\n')
+            f.write('Comments,' + dpg.get_value('notes_input') + '\n')
             f.write('\n')
             if self.ftx is not None:
                 f.write('FTX, Value, Units, Mon/Cmd\n')
@@ -428,7 +407,7 @@ class UserInterface:
                 f.write('FTX SN,' + dpg.get_value(self._ftx_sn_id) + ',,Mon\n')
                 f.write('\n')
             else:
-                f.write('No FTX connected\n\n\n\n\n\n\n\n')
+                f.write('No FTX connected\n')
             if self.frx is not None:
                 f.write('FRX, Value, Units, Mon/Cmd\n')
                 f.write('PD Current,' + dpg.get_value(self._pd_current_id) + ',mA,Mon\n')
@@ -438,17 +417,18 @@ class UserInterface:
                 f.write('FRX SN,' + dpg.get_value(self._frx_sn_id) + ',,Mon\n')
                 f.write('\n')
             else:
-                f.write('No FRX connected\n\n\n\n\n\n')
+                f.write('No FRX connected\n')
             f.write('PNA calibration power\n')
             f.write(str(dpg.get_value("cal_input")) + '\n')
             # TODO: update for multiple runs of data
-            f.write(
-                'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
-                'OIP2,OIP3,Gain,IIP2,IIP3\n')
-            np.savetxt(f, np.array(list(zip(self.pna.x_axis, self.pna.primary_low, self.pna.primary_high,
-                                            self.pna.second_intermod, self.pna.third_intermod_low,
-                                            self.pna.third_intermod_high, self.pna.OIP2, self.pna.OIP3, self.pna.gain,
-                                            self.pna.IIp2, self.pna.IIp3))), delimiter=',', fmt='%f')
+            if self.pna is not None:
+                f.write(
+                    'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
+                    'OIP2,OIP3,Gain,IIP2,IIP3\n')
+                np.savetxt(f, np.array(list(zip(self.pna.x_axis, self.pna.primary_low, self.pna.primary_high,
+                                                self.pna.second_intermod, self.pna.third_intermod_low,
+                                                self.pna.third_intermod_high, self.pna.OIP2, self.pna.OIP3, self.pna.gain,
+                                                self.pna.IIp2, self.pna.IIp3))), delimiter=',', fmt='%f')
 
     def _make_gui(self):
         with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_callback,
@@ -462,8 +442,6 @@ class UserInterface:
                     with dpg.menu(label="Add..."):
                         dpg.add_menu_item(label="Optical Attn", callback=self._show_popup_window, check=True,
                                           user_data={'msg': "Enter the optical attenuation in dB:"})
-                        dpg.add_menu_item(label="Comments", callback=self._show_popup_window,
-                                          user_data={'msg': "Add comments below:"})
             with dpg.tab_bar(tag="tabs"):
                 self._make_pna_tab()
                 self._make_usb_tab()
@@ -489,11 +467,15 @@ class UserInterface:
                         dpg.add_spacer(height=10)
                         dpg.add_button(label="Start", tag="start_cal_button", enabled=False,
                                        callback=self.start_calibration, indent=55, width=60)
-                    with dpg.child_window(label="measurement_window", height=100, width=200):
+                    with dpg.child_window(label="measurement_window", height=75, width=200):
                         dpg.add_button(label="Measure", tag="start_measure_button", enabled=False,
                                        callback=self.start_measurement, indent=55, width=60)
                         dpg.add_button(label="Clear", tag="clear_graph_button", enabled=True,
                                        callback=clear_graph, indent=55, width=60)
+                    with dpg.child_window(label="notes_window", height=400, width=200):
+                        dpg.add_input_text(multiline=True, tag='notes_input', default_value='Fiber Length:\nBias T ' +
+                                           'direct to laser\nLaser SN:\nLaser current:\nLaser wavelength:\nBias T ' +
+                                           'direct to PD\nPD SN:\nPD current:\nopt attn:')
                 with dpg.group(label='right side'):
                     with dpg.child_window(label="console_window", height=200, width=750) as self._console_window_id:
                         dpg.add_text("Welcome to the console for the two tone test program.")
@@ -506,12 +488,9 @@ class UserInterface:
                         with dpg.plot(tag="IIP2 plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
                             dpg.add_plot_axis(dpg.mvYAxis, label="IIP2 (dBm)", tag="iip2 y_axis")
-                        with dpg.plot(tag="OIP2 plot", width=690, height=300, show=False):
+                        with dpg.plot(tag="IIP3 plot", width=690, height=300, show=False):
                             dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
-                            dpg.add_plot_axis(dpg.mvYAxis, label="OIP2 (dBm)", tag="oip2 y_axis")
-                        with dpg.plot(tag="OIP3 plot", width=690, height=300, show=False):
-                            dpg.add_plot_axis(dpg.mvXAxis, label="Frequency (GHz)")
-                            dpg.add_plot_axis(dpg.mvYAxis, label="OIP3 (dBm)", tag="oip3 y_axis")
+                            dpg.add_plot_axis(dpg.mvYAxis, label="IIP3 (dBm)", tag="iip3 y_axis")
 
     def _make_usb_tab(self):
         """Create the layout for the USB-I2C control tab."""
