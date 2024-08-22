@@ -2,8 +2,8 @@ import dearpygui.dearpygui as dpg
 import usb.core
 import usb.util
 from pyftdi.i2c import I2cController, I2cIOError
-from ftx_ctl.ftx import FTX
-from ftx_ctl.frx import FRX
+from rfof import Ftx
+from rfof import Frx
 import time
 from pna import PNA, handle_callbacks_and_render_one_frame
 import binascii
@@ -39,13 +39,20 @@ class UserInterface:
         self.frx = None
         self.pna = None
         self._lna_current_id = 0
+        self._lna_voltage_id = 0
+        self._laser_current_id = 0
         self._laserpd_mon_id = 0
         self._ftx_sn_id = 0
         self._ftx_rfmon_id = 0
+        self._ftx_attn_id = 0
+        self._ftx_temp_id = 0
+        self._ftx_vdd_id = 0
+        self._ftx_vdda_id = 0
         self._frx_rfmon_id = 0
         self._pd_current_id = 0
         self._frx_sn_id = 0
         self._temp_id = 0
+        self._frx_attn_id = 0
         self.opt_attn = "None"
 
     def run(self):
@@ -58,18 +65,17 @@ class UserInterface:
         dpg.show_viewport()
         dpg.set_viewport_resizable(False)
         dpg.configure_app(manual_callback_management=True)
-        # dpg.start_dearpygui()
         ti = dpg.get_total_time()
         while dpg.is_dearpygui_running():
             tf = dpg.get_total_time()
-            if (tf - ti) > 1:  # approx 1 second intervals
+            if (tf - ti) > 2:  # approx 2 second intervals
                 ti = tf
                 self._timer_callback()
             handle_callbacks_and_render_one_frame()
         dpg.destroy_context()
 
     def _timer_callback(self) -> None:
-        """Timer callback that runs approx every 1 second.
+        """Timer callback that runs approx every 2 second.
 
         If the frx or ftx is connected, this will refresh the
         monitor data"""
@@ -133,15 +139,15 @@ class UserInterface:
         Calls the configure function on the I2C ports.
         """
         self.i2c_receive = I2cController()
-        # dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)
-        dev = usb.core.find(idVendor=1027, idProduct=24592)  # Tigard
+        dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)
+        # dev = usb.core.find(idVendor=1027, idProduct=24592)  # Tigard
         if dev is None:
             add_text_to_console('USB Device not found!')
             return
         try:
-            # self.i2c_receive.configure(dev, interface=1)
-            self.i2c_receive.configure(dev, interface=2)
-            self.frx = FRX(self.i2c_receive)
+            self.i2c_receive.configure(dev, interface=1)
+            # self.i2c_receive.configure(dev, interface=2)  # Tigard
+            self.frx = Frx(self.i2c_receive)
         except I2cIOError:
             # Log the error to the console
             add_text_to_console("Could not connect to FRX board, check connection and try again.")
@@ -154,12 +160,7 @@ class UserInterface:
         # Enable all the control inputs
         dpg.configure_item("frx_output_attn", enabled=True)
 
-        # dpg.configure_item(self._frx_sn_id, color=(255, 255, 255))
-        # dpg.configure_item(self._frx_rfmon_id, color=(255, 255, 255))
-        # dpg.configure_item(self._pd_current_id, color=(255, 255, 255))
-        # dpg.configure_item(self._temp_id, color=(255, 255, 255))
-
-        self._update_all_frx()
+        self._update_mon_frx()
 
     def _disconnect_frx(self, sender=None, data=None) -> None:
         """Callback for clicking the frx disconnect button.
@@ -173,47 +174,33 @@ class UserInterface:
         add_text_to_console("FRX board connection closed. OK to unplug.")
         # Disable all the settings inputs
         dpg.configure_item("frx_output_attn", enabled=False)
-        # dpg.configure_item(self._frx_sn_id, color=(37, 37, 37))
-        # dpg.configure_item(self._frx_rfmon_id, color=(37, 37, 37))
-        # dpg.configure_item(self._pd_current_id, color=(37, 37, 37))
-        # dpg.configure_item(self._temp_id, color=(37, 37, 37))
 
     def _update_frx_attn(self) -> None:
         new_value = dpg.get_value("frx_output_attn")
-        self.frx.set_atten(int(new_value * 4))
+        self.frx.set_atten(new_value)
         add_text_to_console("Setting output attenuation to " + str(new_value) + "...")
         time.sleep(0.1)
-        set_value = self.frx.atten.read() / 4
-        dpg.set_value("frx_output_attn", set_value)
-
-        if new_value != set_value:
-            add_text_to_console("**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " +
-                                str(set_value) + ".")
-
-    def _update_all_frx(self) -> None:
-        """ Reads all the monitor data and updates the
-            display accordingly
-        """
-        add_text_to_console("Reading FRX RF monitor...")
-        # dpg.set_value(self._frx_rfmon_id, str(self.frx.get_rms_power()))
-        add_text_to_console("Reading FRX PD current...")
-        # dpg.set_value(self._pd_current_id, str(self.frx.get_pd_current()))
-        add_text_to_console("Reading FRX UUID...")
-        dpg.set_value(self._frx_sn_id, binascii.hexlify(self.frx.get_uuid()).decode('ascii'))
-        add_text_to_console("Reading FRX temperature...")
-        # dpg.set_value(self._temp_id, str(self.frx.get_temp()))
-        add_text_to_console("Reading output attenuation value...")
-        dpg.set_value("frx_output_attn", self.frx.atten.read() / 4)
+        try:
+            set_value = self.frx.get_atten()
+            dpg.set_value(self._frx_attn_id, set_value)
+            if new_value != set_value:
+                add_text_to_console("**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " +
+                                    str(set_value) + ".")
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FRX attenuation value.")
 
     def _update_mon_frx(self) -> None:
         """ Reads all the monitor data and updates the
-            display accordingly. Called every 1 second.
+            display accordingly. Called every 2 second.
         """
-        # dpg.set_value(self._frx_rfmon_id, str(self.frx.get_rms_power()))
-        # dpg.set_value(self._pd_current_id, str(self.frx.get_pd_current()))
-        dpg.set_value(self._frx_sn_id, binascii.hexlify(self.frx.get_uuid()).decode('ascii'))
-        # dpg.set_value(self._temp_id, str(self.frx.get_temp()))
-        # dpg.set_value("frx_output_attn", self.frx.atten.read() / 4)
+        try:
+            dpg.set_value(self._frx_rfmon_id, "{:.2f}".format(self.frx.get_rf_power()))
+            dpg.set_value(self._pd_current_id, "{:.2f}".format(self.frx.get_pd_current()))
+            dpg.set_value(self._frx_sn_id, self.frx.get_uid())
+            dpg.set_value(self._temp_id, "{:.2f}".format(self.frx.get_temp()))
+            dpg.set_value(self._frx_attn_id, "{:.2f}".format(self.frx.get_atten()))
+        except TimeoutError:
+            add_text_to_console("Timeout while updating FRX monitor values.")
 
     def _connect_ftx(self, sender=None, data=None) -> None:
         """Callback for clicking the connect button.
@@ -221,28 +208,22 @@ class UserInterface:
         Calls the configure function on the I2C ports.
         """
 
-        # dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)  # Custom
-        dev = usb.core.find(idVendor=1027, idProduct=24592)  # Tigard
+        dev = usb.core.find(idVendor=0x0403, idProduct=0x6048)  # Custom
+        # dev = usb.core.find(idVendor=1027, idProduct=24592)  # Tigard
         if dev is None:
             add_text_to_console("Could not find the USB device, check connection and try again.")
-            # dpg.add_text("Could not find the USB device, check connection and try again.",
-            #              parent="console_window")
             return
 
         self.i2c_transmit = I2cController()
         try:
             self.i2c_transmit.configure(dev, interface=2)
-            self.ftx = FTX(self.i2c_transmit)
+            self.ftx = Ftx(self.i2c_transmit)
         except I2cIOError:
             # Log the error to the console
             add_text_to_console("Could not connect to FTX board, check connection and try again.")
-            # dpg.add_text("Could not connect to FTX board, check connection and try again.",
-            #              parent="console_window")
             return
 
         add_text_to_console("Connected to the FTX board. Control fields are now enabled.")
-        # dpg.add_text("Connected to the FTX board. Control fields are now enabled.",
-        #              parent="console_window")
         dpg.configure_item("ftx_connect_button", show=False)
         dpg.configure_item("ftx_disconnect_button", show=True)
         # Enable all the control inputs
@@ -250,13 +231,7 @@ class UserInterface:
         dpg.configure_item("ftx_input_attn", enabled=True)
         dpg.configure_item("ftx_laser_current", enabled=True)
 
-        # dpg.configure_item(self._ftx_sn_id, color=(255, 255, 255))
-        # dpg.configure_item(self._ftx_rfmon_id, color=(255, 255, 255))
-        # # dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
-        # # dpg.configure_item(self._laser_current_id, color=(255, 255, 255))
-        # dpg.configure_item(self._laserpd_mon_id, color=(255, 255, 255))
-
-        self._update_all_ftx()
+        self._update_mon_ftx()
 
     def _disconnect_ftx(self, sender=None, data=None) -> None:
         """Callback for clicking the disconnect button.
@@ -266,69 +241,59 @@ class UserInterface:
         dpg.configure_item("ftx_connect_button", show=True)
         dpg.configure_item("ftx_disconnect_button", show=False)
         self.i2c_transmit.close()
-        # dpg.add_text("FTX board connection closed. OK to unplug.",
-        #              parent="console_window")
         add_text_to_console("FTX board connection closed. OK to unplug.")
         self.ftx = None
         # Disable all the settings inputs
         dpg.configure_item("lna_bias_checkbox", enabled=False)
         dpg.configure_item("ftx_input_attn", enabled=False)
         dpg.configure_item("ftx_laser_current", enabled=False)
-        # dpg.configure_item(self._ftx_sn_id, color=(37, 37, 37))
-        # dpg.configure_item(self._ftx_rfmon_id, color=(37, 37, 37))
-        # dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
-        # # dpg.configure_item(self._laser_current_id, color=(37, 37, 37))
-        # dpg.configure_item(self._laserpd_mon_id, color=(37, 37, 37))
 
     def _update_mon_ftx(self) -> None:
         """ Reads all the monitor data and updates the
             display accordingly
         """
-        if dpg.get_value("lna_bias_checkbox"):
-            dpg.set_value(self._lna_current_id, str(self.ftx.get_ld_current()))
-        dpg.set_value(self._laserpd_mon_id, str(self.ftx.get_pd_current()))
-        dpg.set_value(self._ftx_sn_id, binascii.hexlify(self.ftx.get_uuid()).decode('ascii'))
-        dpg.set_value(self._ftx_rfmon_id, str(self.ftx.get_rms_power()))
-
-    def _update_all_ftx(self) -> None:
-        """ Reads all the monitor data and updates the
-            display accordingly
-        """
-        if dpg.get_value("lna_bias_checkbox"):
-            add_text_to_console("Reading FTX LNA current...")
-            dpg.set_value(self._lna_current_id, str(self.ftx.get_ld_current()))
-        add_text_to_console("Reading FTX laser current...")
-        dpg.set_value("ftx_laser_current", self.ftx.get_ld_current())
-        add_text_to_console("Reading FTX PD current...")
-        dpg.set_value(self._laserpd_mon_id, str(self.ftx.get_pd_current()))
-        add_text_to_console("Reading FTX UUID...")
-        dpg.set_value(self._ftx_sn_id, binascii.hexlify(self.ftx.get_uuid()).decode('ascii'))
-        add_text_to_console("Reading FTX RF monitor...")
-        dpg.set_value(self._ftx_rfmon_id, str(self.ftx.get_rms_power()))
-        add_text_to_console("Reading input attenuation value...")
-        dpg.set_value("ftx_input_attn", self.ftx.atten.read() / 4)
+        try:
+            if dpg.get_value("lna_bias_checkbox"):
+                dpg.set_value(self._lna_current_id, "{:.2f}".format(self.ftx.get_lna_current()))
+                dpg.set_value(self._lna_voltage_id, "{:.2f}".format(self.ftx.get_lna_voltage()))
+            dpg.set_value(self._laser_current_id, "{:.2f}".format(self.ftx.get_ld_current()))
+            dpg.set_value(self._laserpd_mon_id, "{:.2f}".format(self.ftx.get_pd_current()))
+            dpg.set_value(self._ftx_sn_id, self.ftx.get_uid())
+            dpg.set_value(self._ftx_rfmon_id, "{:.2f}".format(self.ftx.get_rf_power()))
+            dpg.set_value(self._ftx_attn_id, "{:.2f}".format(self.ftx.get_atten()))
+            dpg.set_value(self._ftx_temp_id, "{:.2f}".format(self.ftx.get_temp()))
+            dpg.set_value(self._ftx_vdda_id, "{:.2f}".format(self.ftx.get_vdda_voltage()))
+            dpg.set_value(self._ftx_vdd_id, "{:.2f}".format(self.ftx.get_vdd_voltage()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
 
     def _update_ftx_attn(self) -> None:
         new_value = dpg.get_value("ftx_input_attn")
-        self.ftx.set_atten(int(new_value*4))
+        self.ftx.set_atten(new_value)
         add_text_to_console("Setting input attenuation to " + str(new_value) + "...")
         time.sleep(0.1)
-        set_value = self.ftx.atten.read()/4
-        dpg.set_value("ftx_input_attn", set_value)
-
-        if new_value != set_value:
-            add_text_to_console("**WARNING** Value input: "+str(round(new_value, 2))+", value set: "+str(set_value)+".")
+        try:
+            set_value = self.ftx.get_atten()
+            dpg.set_value("ftx_attn", set_value)
+            if new_value != set_value:
+                add_text_to_console(
+                    "**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " + str(set_value) + ".")
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX attenuation value.")
 
     def _update_ftx_laser(self) -> None:
         new_value = dpg.get_value("ftx_laser_current")
-        self.ftx.set_ld_current(int((new_value/50)*255))
+        self.ftx.set_ld_current(new_value)
         add_text_to_console("Setting laser current to " + str(new_value) + "...")
         time.sleep(0.1)
-        set_value = self.ftx.get_ld_current()
-        dpg.set_value("ftx_laser_current", set_value)
-
-        if new_value != set_value:
-            add_text_to_console("**WARNING** Value input: "+str(round(new_value, 2))+", value set: "+str(set_value)+".")
+        try:
+            set_value = self.ftx.get_ld_current()
+            dpg.set_value("ftx_laser_current_mon", set_value)
+            if new_value != set_value:
+                add_text_to_console(
+                    "**WARNING** Value input: " + str(round(new_value, 2)) + ", value set: " + str(set_value) + ".")
+        except TimeoutError:
+            add_text_to_console("Timeout while reading Laser Diode current.")
 
     def _lna_bias_checked(self, sender) -> None:
         """ Callback for when the lna bias enable checkbox is clicked.
@@ -337,16 +302,16 @@ class UserInterface:
         If turned off, sends the lna bias disable command
         """
         value = dpg.get_value(sender)
-        self.ftx.set_lna_power(value)
+        self.ftx.set_lna_enable(value)
         if value:
             add_text_to_console("LNA bias enabled.")
-            # dpg.add_text("LNA bias enabled.", parent="console_window")
-            # dpg.configure_item(self._lna_current_id, color=(255, 255, 255))
-            dpg.set_value(self._lna_current_id, str(self.ftx.get_ld_current()))
+            try:
+                dpg.set_value(self._lna_current_id, "{:.2f}".format(self.ftx.get_lna_current()))
+                dpg.set_value(self._lna_voltage_id, "{:.2f}".format(self.ftx.get_lna_voltage()))
+            except TimeoutError:
+                add_text_to_console("Timeout while reading LNA current and voltage.")
         else:
             add_text_to_console("LNA bias disabled.")
-            # dpg.add_text("LNA bias disabled.", parent="console_window")
-            # dpg.configure_item(self._lna_current_id, color=(37, 37, 37))
 
     def _show_popup_window(self, sender=None, data=None, user_data=None) -> None:
         """Callback for when certain buttons are clicked.
@@ -393,18 +358,22 @@ class UserInterface:
                 f.write('FTX, Value, Units, Mon/Cmd\n')
                 if dpg.get_value("lna_bias_checkbox"):
                     msg = 'ON'
+                    f.write('LNA Bias Enable,' + msg + ',,Cmd\n')
+                    f.write('LNA Current,' + dpg.get_value(self._lna_current_id) + ',mA,Mon\n')
+                    f.write('LNA Voltage,' + dpg.get_value(self._lna_voltage_id) + ',V,Mon\n')
                 else:
                     msg = 'OFF'
-                f.write('LNA Bias Enable,' + msg + ',,Cmd\n')
-                if dpg.get_value("lna_bias_checkbox"):
-                    f.write('LNA Current,' + dpg.get_value(self._lna_current_id) + ',mA,Mon\n')
-                else:
+                    f.write('LNA Bias Enable,' + msg + ',,Cmd\n')
                     f.write('LNA Current,N/A,mA,Mon\n')
+                    f.write('LNA Voltage,N/A,V,Mon\n')
                 f.write('RF Monitor,' + dpg.get_value(self._ftx_rfmon_id) + ',dBm,Mon\n')
-                f.write('Input Attenuation,' + str(dpg.get_value("ftx_input_attn")) + ',dB,Cmd\n')
-                f.write('Laser Current,' + str(dpg.get_value("ftx_laser_current")) + ',mA,Cmd\n')
-                f.write('PD Current,' + dpg.get_value(self._laserpd_mon_id) + ',mA,Mon\n')
+                f.write('Input Attenuation,' + dpg.get_value(self._ftx_attn_id) + ',dB,Cmd\n')
+                f.write('Laser Current,' + dpg.get_value(self._laser_current_id) + ',mA,Cmd\n')
+                f.write('PD Current,' + dpg.get_value(self._laserpd_mon_id) + ',uA,Mon\n')
                 f.write('FTX SN,' + dpg.get_value(self._ftx_sn_id) + ',,Mon\n')
+                f.write('FTX Temp,' + dpg.get_value(self._ftx_temp_id) + ',degC,Mon\n')
+                f.write('Vdd Voltage,' + dpg.get_value(self._ftx_vdd_id) + ',V,Mon\n')
+                f.write('Vdda Voltage,' + dpg.get_value(self._ftx_vdda_id) + ',V,Mon\n')
                 f.write('\n')
             else:
                 f.write('No FTX connected\n')
@@ -412,7 +381,7 @@ class UserInterface:
                 f.write('FRX, Value, Units, Mon/Cmd\n')
                 f.write('PD Current,' + dpg.get_value(self._pd_current_id) + ',mA,Mon\n')
                 f.write('RF Monitor,' + dpg.get_value(self._frx_rfmon_id) + ',dBm,Mon\n')
-                f.write('Output Attenuation,' + str(dpg.get_value("frx_output_attn")) + ',dB,Cmd\n')
+                f.write('Output Attenuation,' + dpg.get_value(self._frx_attn_id) + ',dB,Cmd\n')
                 f.write('Temperature,' + dpg.get_value(self._temp_id) + ',degC,Mon\n')
                 f.write('FRX SN,' + dpg.get_value(self._frx_sn_id) + ',,Mon\n')
                 f.write('\n')
@@ -497,67 +466,104 @@ class UserInterface:
         with dpg.tab(label="USB-I2C", tag="usb_tab"):
             with dpg.group(label="overall", horizontal=True):
                 with dpg.group(label="left_side"):
-                    with dpg.child_window(tag="FTX", width=400, height=440):
+                    with dpg.child_window(tag="FTX", width=400, height=550) as ftx_win:
                         with dpg.group(tag="ftx_settings_group"):
-                            dpg.add_text("FTX", pos=[195, 5])
+                            h1 = dpg.add_text("FTX", pos=[195, 5])
                             with dpg.group(tag="ftx_connect_buttons_group", horizontal=True):
                                 dpg.add_button(label="Connect", tag="ftx_connect_button", callback=self._connect_ftx,
                                                pos=[180, 30])
                                 dpg.add_button(label="Disconnect", tag="ftx_disconnect_button",
                                                callback=self._disconnect_ftx, show=False, pos=[180, 30])
-                            dpg.add_text("LNA Bias Enable")#, color=(37, 37, 37))
+                            t1 = dpg.add_text("LNA Bias Enable")
                             dpg.add_checkbox(label="", tag="lna_bias_checkbox", enabled=False,
                                              callback=self._lna_bias_checked)
                             dpg.add_spacer()
-                            dpg.add_text("LNA Current (mA)")#, color=(37, 37, 37))
-                            self._lna_current_id = dpg.add_text("0.0", tag="ftx_lna_current")#, color=(69, 69, 69))
+                            with dpg.group(horizontal=True, horizontal_spacing=100):
+                                with dpg.group():
+                                    t2 = dpg.add_text("LNA Current (mA)")
+                                    self._lna_current_id = dpg.add_text("0.0", tag="ftx_lna_current")
+                                with dpg.group():
+                                    t22 = dpg.add_text("LNA Voltage (V)")
+                                    self._lna_voltage_id = dpg.add_text("0.0", tag="ftx_lna_voltage")
                             dpg.add_spacer()
-                            dpg.add_text("RF Monitor (dBm)")#, color=(37, 37, 37))
-                            self._ftx_rfmon_id = dpg.add_text("0.0", tag="ftx_rf_mon")#, color=(69, 69, 69))
+                            t3 = dpg.add_text("RF Monitor (dBm)")
+                            self._ftx_rfmon_id = dpg.add_text("0.0", tag="ftx_rf_mon")
                             dpg.add_spacer()
-                            dpg.add_text("Input Attenuation (dB)")#, color=(37, 37, 37))
-                            dpg.add_input_float(tag="ftx_input_attn", enabled=False, default_value=0, max_value=31.25,
-                                                min_value=0, step=0.25, callback=self._update_ftx_attn, on_enter=True,
-                                                min_clamped=True, max_clamped=True, format='%.2f')
+                            with dpg.group(horizontal=True, horizontal_spacing=50):
+                                with dpg.group():
+                                    t4 = dpg.add_text("Input Attenuation (dB)")
+                                    self._ftx_attn_id = dpg.add_text("0.0", tag="ftx_attn")
+                                with dpg.group():
+                                    dpg.add_text("Control")
+                                    dpg.add_input_float(tag="ftx_input_attn", enabled=False, default_value=0,
+                                                        max_value=31.25,
+                                                        min_value=0, step=0.25, callback=self._update_ftx_attn,
+                                                        on_enter=True, width=150,
+                                                        min_clamped=True, max_clamped=True, format='%.2f')
                             dpg.add_spacer()
-                            dpg.add_text("Laser Current (mA)")#, color=(37, 37, 37))
-                            dpg.add_input_float(tag="ftx_laser_current", enabled=False, default_value=25, max_value=50,
-                                                min_value=0, step=0.25, callback=self._update_ftx_laser, on_enter=True,
-                                                min_clamped=True, max_clamped=True, format='%.2f')
+                            with dpg.group(horizontal=True, horizontal_spacing=75):
+                                with dpg.group():
+                                    t5 = dpg.add_text("Laser Current (mA)")
+                                    self._laser_current_id = dpg.add_text("0.0", tag="ftx_laser_current_mon")
+                                with dpg.group():
+                                    dpg.add_text(" ")
+                                    dpg.add_input_float(tag="ftx_laser_current", enabled=False, default_value=25,
+                                                        max_value=50, min_value=0, step=0.25,
+                                                        callback=self._update_ftx_laser,
+                                                        on_enter=True, min_clamped=True, max_clamped=True,
+                                                        format='%.2f',
+                                                        width=150)
                             dpg.add_spacer()
-                            dpg.add_text("Photodiode Current (mA)")#, color=(37, 37, 37))
-                            self._laserpd_mon_id = dpg.add_text("0.0", tag="ftx_laserpd_mon")#, color=(69, 69, 69))
+                            t6 = dpg.add_text("Photodiode Current (uA)")
+                            self._laserpd_mon_id = dpg.add_text("0.0", tag="ftx_laserpd_mon")
                             dpg.add_spacer()
-                            dpg.add_text("Serial Number")#, color=(37, 37, 37))
-                            self._ftx_sn_id = dpg.add_text("0x0000", tag="ftx_sn")#, color=(69, 69, 69))
+                            t7 = dpg.add_text("Serial Number")
+                            self._ftx_sn_id = dpg.add_text("0000", tag="ftx_sn")
+                            dpg.add_spacer()
+                            t13 = dpg.add_text("Temperature")
+                            self._ftx_temp_id = dpg.add_text("0.0", tag="ftx_temp")
+                            dpg.add_spacer()
+                            with dpg.group(horizontal=True, horizontal_spacing=100):
+                                with dpg.group():
+                                    t14 = dpg.add_text("Vdd Voltage (V)")
+                                    self._ftx_vdd_id = dpg.add_text("0.0", tag="ftx_vdd")
+                                with dpg.group():
+                                    t15 = dpg.add_text("Vdda Voltage (V)")
+                                    self._ftx_vdda_id = dpg.add_text("0.0", tag="ftx_vdda")
                             dpg.add_spacer()
                 with dpg.group(label="right_side"):
-                    with dpg.child_window(tag="FRX", width=400, height=440):
+                    with dpg.child_window(tag="FRX", width=400, height=550) as frx_win:
                         with dpg.group(tag="frx_settings_group"):
-                            dpg.add_text("FRX", pos=[195, 5])
+                            h2 = dpg.add_text("FRX", pos=[195, 5])
                             with dpg.group(tag="frx_connect_buttons_group", horizontal=True):
                                 dpg.add_button(label="Connect", tag="frx_connect_button", callback=self._connect_frx,
                                                pos=[180, 30])
                                 dpg.add_button(label="Disconnect", tag="frx_disconnect_button",
                                                callback=self._disconnect_frx, show=False, pos=[180, 30])
-                            dpg.add_text("Photodiode Current (mA)")#, color=(37, 37, 37))
-                            self._pd_current_id = dpg.add_text("0.0", tag="frx_pd_current")#, color=(69, 69, 69))
+                            t8 = dpg.add_text("Photodiode Current (mA)")
+                            self._pd_current_id = dpg.add_text("0.0", tag="frx_pd_current")
                             dpg.add_spacer()
-                            dpg.add_text("RF Monitor (dBm)")#, color=(37, 37, 37))
-                            self._frx_rfmon_id = dpg.add_text("0.0", tag="frx_rf_mon")#, color=(69, 69, 69))
+                            t9 = dpg.add_text("RF Monitor (dBm)")
+                            self._frx_rfmon_id = dpg.add_text("0.0", tag="frx_rf_mon")
                             dpg.add_spacer()
-                            dpg.add_text("Output Attenuation (dB)")#, color=(37, 37, 37))
-                            dpg.add_input_float(tag="frx_output_attn", enabled=False, default_value=0, max_value=31.25,
-                                                min_value=0, step=0.25, on_enter=True, callback=self._update_frx_attn,
-                                                min_clamped=True, max_clamped=True, format='%.2f')
+                            with dpg.group(horizontal=True, horizontal_spacing=50):
+                                with dpg.group():
+                                    t10 = dpg.add_text("Output Attenuation (dB)")
+                                    self._frx_attn_id = dpg.add_text("0.0", tag="frx_attn_mon")
+                                with dpg.group():
+                                    dpg.add_text("Control")
+                                    dpg.add_input_float(tag="frx_output_attn", enabled=False, default_value=0,
+                                                        max_value=31.25, min_value=0, step=0.25, on_enter=True,
+                                                        callback=self._update_frx_attn, min_clamped=True,
+                                                        max_clamped=True, format='%.2f', width=150)
                             dpg.add_spacer()
-                            dpg.add_text("Temperature (C)")#, color=(37, 37, 37))
-                            self._temp_id = dpg.add_text("0.0", tag="frx_temp")#, color=(69, 69, 69))
+                            t11 = dpg.add_text("Temperature (C)")
+                            self._temp_id = dpg.add_text("0.0", tag="frx_temp")
                             dpg.add_spacer()
-                            dpg.add_text("Serial Number")#, color=(37, 37, 37))
-                            self._frx_sn_id = dpg.add_text("0x0000", tag="frx_sn")#, color=(69, 69, 69))
+                            t12 = dpg.add_text("Serial Number")
+                            self._frx_sn_id = dpg.add_text("0x0000", tag="frx_sn")
                             dpg.add_spacer()
-            with dpg.child_window(tag="console_window", width=810, height=110):
+            with dpg.child_window(tag="console_window", width=810, height=110) as win1:
                 dpg.add_text("Welcome to the console.")
                 dpg.add_text("Connect to the RF over Fiber boards to begin.")
 

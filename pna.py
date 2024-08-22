@@ -33,6 +33,30 @@ def msgbox(message, extra_button=False):
     return resp
 
 
+def input_box():
+
+    def on_inputbox_btn_click(sender, data, user_data):
+        nonlocal resp
+        # resp = dpg.get_item_label(sender)
+        resp = dpg.get_value('new_tolerance')
+        dpg.hide_item(popup)
+
+    # print(dpg.last_item())
+    with dpg.popup(parent=dpg.last_item(), modal=True) as popup:
+        # print(dpg.get_item_parent(popup))
+        dpg.add_text("New iteration tolerance:")
+        dpg.add_input_float(tag='new_tolerance', default_value=0.1, min_value=0, max_value=5)
+        dpg.add_text("New iteration count:")
+        dpg.add_input_int(tag='new_count', default_value=25, min_value=1, max_value=100)
+        dpg.add_button(label='OK', callback=on_inputbox_btn_click)
+    dpg.show_item(popup)
+
+    resp = None
+    while not resp:
+        handle_callbacks_and_render_one_frame()
+    return resp
+
+
 def show_wait(message) -> None:
 
     # print(dpg.last_item())
@@ -360,6 +384,8 @@ class PNA:
             self._session.write(':SOURce:POWer3:MODE ON')
 
             time.sleep(0.1)
+
+            self._session.write("DISPlay:WINDow:TRACe2:Y:SCALe:RLEVel -50")
 
             # Copy channel 1 to channel 2
             self.copy_channel(2, 'IM2', 0, 2)
