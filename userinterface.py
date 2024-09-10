@@ -255,14 +255,45 @@ class UserInterface:
         try:
             if dpg.get_value("lna_bias_checkbox"):
                 dpg.set_value(self._lna_current_id, "{:.2f}".format(self.ftx.get_lna_current()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
+            if dpg.get_value("lna_bias_checkbox"):
                 dpg.set_value(self._lna_voltage_id, "{:.2f}".format(self.ftx.get_lna_voltage()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._laser_current_id, "{:.2f}".format(self.ftx.get_ld_current()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._laserpd_mon_id, "{:.2f}".format(self.ftx.get_pd_current()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._ftx_sn_id, self.ftx.get_uid())
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._ftx_rfmon_id, "{:.2f}".format(self.ftx.get_rf_power()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._ftx_attn_id, "{:.2f}".format(self.ftx.get_atten()))
-            dpg.set_value(self._ftx_temp_id, "{:.2f}".format(self.ftx.get_temp()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        # try:
+        #     dpg.set_value(self._ftx_temp_id, "{:.2f}".format(self.ftx.get_temp()))
+        # except Exception as inst:
+        #     print(type(inst))  # the exception type
+        #     print(inst.args)  # arguments stored in .args
+        #     print(inst)
+        #     add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._ftx_vdda_id, "{:.2f}".format(self.ftx.get_vdda_voltage()))
+        except TimeoutError:
+            add_text_to_console("Timeout while reading FTX monitor values.")
+        try:
             dpg.set_value(self._ftx_vdd_id, "{:.2f}".format(self.ftx.get_vdd_voltage()))
         except TimeoutError:
             add_text_to_console("Timeout while reading FTX monitor values.")

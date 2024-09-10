@@ -326,6 +326,46 @@ class PNA:
         if resp == 'Yes':
             print('We did it!')
 
+        # Find the range number for the primary range
+        self._primaryNum = self._session.query(":SENSe:FOM:RNUM? 'Primary'")[:-1]
+        # Use it to set primary freq range
+        self._session.write(
+            ':SENSe:FOM:RANGe' + str(int(self._primaryNum)) + ':FREQuency:STARt 350000000')  # 350 MHz
+        self._session.write(':SENSe:FOM:RANGe' + str(int(self._primaryNum)) + ':FREQuency:STOP 2000000000')  # 2 GHz
+
+        # Find the range number for the source and source2 range
+        source_num = self._session.query(":SENSe:FOM:RNUM? 'Source'")[:-1]
+        source2_num = self._session.query(":SENSe:FOM:RNUM? 'Source2'")[:-1]
+        receivers_num = self._session.query(":SENSe:FOM:RNUM? 'Receivers'")[:-1]
+
+        # Couple them to the primary range and set the offset
+        self._session.write(':SENSe:FOM:RANGe' + str(int(source_num)) + ':COUPled 1')
+        self._session.write(':SENSe:FOM:RANGe' + str(int(source2_num)) + ':COUPled 1')
+        self._session.write(':SENSe:FOM:RANGe' + str(int(receivers_num)) + ':COUPled 1')
+        self._session.write(':SENSe:FOM:RANGe' + str(int(source_num)) + ':FREQuency:OFFSet -500000')  # -500 kHz
+        self._session.write(':SENSe:FOM:RANGe' + str(int(source2_num)) + ':FREQuency:OFFSet 500000')  # 500 kHz
+        self._session.write(':SENSe:FOM:RANGe' + str(int(receivers_num)) + ':FREQuency:OFFSet -500000')  # -500 kHz
+
+        # Turn frequency offset ON
+        self._session.write(':SENSe:FOM:STATe 1')
+
+        # Turn on port 1 and port 3
+        self._session.write(':SOURce:POWer1:MODE ON')
+        self._session.write(':SOURce:POWer3:MODE ON')
+
+        time.sleep(0.1)
+
+        self._session.write("DISPlay:WINDow:TRACe2:Y:SCALe:RLEVel -50")
+
+        # Copy channel 1 to channel 2
+        self.copy_channel(2, 'IM2', 0, 2)
+        # Copy channel 1 to channel 3
+        self.copy_channel(3, 'PH', 500000, 1)
+        # Copy channel 1 to channel 4
+        self.copy_channel(4, 'IM3L', -1500000, 1)
+        # Copy channel 1 to channel 5
+        self.copy_channel(5, 'IM3H', 1500000, 1)
+
     def copy_channel(self, to_channel, name, offset, multiplier):
         # Copy channel 1 to new channel
         self._session.write(':SYSTem:MACRo:COPY:CHANnel:TO ' + str(to_channel))
@@ -353,10 +393,7 @@ class PNA:
         if self.input_pow is None:
             print("uh-oh, the machine wasn't calibrated before running the tests")
             self.input_pow = input_power
-        # print('Starting two-tone measurement....')
 
-        # This stuff doesn't need to be redone for every DUT switch
-        if self._primaryNum is None:
             # Find the range number for the primary range
             self._primaryNum = self._session.query(":SENSe:FOM:RNUM? 'Primary'")[:-1]
             # Use it to set primary freq range
@@ -456,4 +493,7 @@ class PNA:
         self.gain = self.primary_low - input_power
         self.IIp2 = self.OIP2 - self.gain
         self.IIp3 = self.OIP3 - self.gain
+
+        # Turn continuous sweep back on
+        self._session.write("INITiate:CONTinuous ON")
 
