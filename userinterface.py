@@ -6,8 +6,8 @@ from rfof import Ftx
 from rfof import Frx
 import time
 from pna import PNA, handle_callbacks_and_render_one_frame
-import binascii
 import numpy as np
+import VSerialPort
 
 
 def add_text_to_console(msg) -> None:
@@ -38,6 +38,7 @@ class UserInterface:
         self.i2c_receive = None
         self.frx = None
         self.pna = None
+        self.sp = None
         self._lna_current_id = 0
         self._lna_voltage_id = 0
         self._laser_current_id = 0
@@ -84,6 +85,41 @@ class UserInterface:
 
         if self.ftx is not None:
             self._update_mon_ftx()
+
+    # Valon PID=24577, VID=1027
+
+    def connect_valon(self):
+        # Connect to the valon
+        self.sp = VSerialPort.VSerialPort()
+        if self.sp.isOpen():
+            self.sp.writeline("status")
+            self.sp.readAll()
+
+            # Set ext reference at 10MHz
+            self.sp.writeline('REFS 1')
+            self.sp.readAll()
+            self.sp.writeline('ref; 10m')
+            self.sp.readAll()
+            self.sp.lineGet()  # Throw away the echo of the command
+
+        else:
+            add_text_to_console("Could not connect to the Valon, check USB connection and try again.")
+
+    def program_valon(self):
+        #  Convert the desired RF power to an attenuation value
+        power = dpg.get_value("pow_input")
+        #  Assume output pow is +15dBm when ATT=0
+        if power < -15:
+            # Setting RFPow to OFF drops power by 30dB
+            self.sp.writeline('Source 1; OEN 0')
+            self.sp.writeline('Source 2; OEN 0')
+            attn = -15 - power
+        else:
+            attn = 15 - power
+
+        self.sp.writeline('Source1; ATT' + attn)
+        self.sp.readAll()
+        self.sp.lineGet()  # TODO:  read the echo of the command to check?
 
     def connect_pna(self):
         #  Connect to the PNA
@@ -458,15 +494,15 @@ class UserInterface:
                         dpg.add_button(label="Disconnect", tag="disconnect_button", enabled=False, show=False,
                                        callback=self.disconnect_pna, indent=35, width=100)
                     with dpg.child_window(label="calibration_window", height=150, width=200):
-                        dpg.add_text("Re-Calibrate PNA")
+                        dpg.add_text("Valon Settings")
                         dpg.add_spacer()
                         dpg.add_text("Source Power (dBm)")
-                        dpg.add_input_float(tag="cal_input", step=0, on_enter=True,
-                                            callback=lambda: print('Check if input is valid'), min_value=-50,
+                        dpg.add_input_float(tag="pow_input", step=0, on_enter=True,
+                                            callback=self.program_valon, min_value=-50,
                                             min_clamped=True, max_value=10, max_clamped=True)
                         dpg.add_spacer(height=10)
-                        dpg.add_button(label="Start", tag="start_cal_button", enabled=False,
-                                       callback=self.start_calibration, indent=55, width=60)
+                        dpg.add_button(label="Connect", tag="valon_button", enabled=False,
+                                       callback=self.connect_valon, indent=55, width=60)
                     with dpg.child_window(label="measurement_window", height=75, width=200):
                         dpg.add_button(label="Measure", tag="start_measure_button", enabled=False,
                                        callback=self.start_measurement, indent=55, width=60)

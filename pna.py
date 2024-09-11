@@ -4,8 +4,11 @@ from pyvisa.constants import VI_ATTR_TMO_VALUE
 import dearpygui.dearpygui as dpg
 import inspect
 import numpy as np
+from RsInstrument import *
 
 dpg_callback_queue = []
+
+# This file is modified for the Rohde & Schwarz ZVL VNA
 
 
 def msgbox(message, extra_button=False):
@@ -116,17 +119,13 @@ def _hide_popup_window() -> None:
 class PNA:
 
     def __init__(self):
-        self._session = None
-        self._resourceManager = None
+        self._zvl = None
         self._primaryNum = None
         self.primary_low = None
         self.primary_high = None
         self.second_intermod = None
         self.third_intermod_low = None
         self.third_intermod_high = None
-        # Change this variable to the address of your instrument
-        # self.VISA_ADDRESS = 'USB0::0x0957::0x0118::MY48420936::0::INSTR'
-        self.VISA_ADDRESS = 'GPIB0::16::INSTR'
         self.popup = None
         self.input_pow = None
         self.x_axis = None
@@ -141,27 +140,24 @@ class PNA:
 
     def connect_to_pna(self) -> int:
         try:
-            # Create a connection (session) to the instrument
-            self._resourceManager = visa.ResourceManager()
-            self._session = self._resourceManager.open_resource(self.VISA_ADDRESS)
-        except visa.Error as ex:
-            # print('Couldn\'t connect to \'%s\', exiting now...' % self.VISA_ADDRESS)
+            # Create a connection (session) to the instrument over LAN
+            self._zvl = RsInstrument('TCPIP::192.168.1.50::INSTR', reset=True, id_query=True)
+            self._zvl.visa_timeout = 3000
+            # opc_timeout default value is 10000 ms
+            self._zvl.opc_timeout = 20000
+        except ResourceError as ex:
+            print(ex.args[0])
             # sys.exit()
             return 1
-
-        # For Serial and TCP/IP socket connections enable the read Termination Character, or read's will timeout
-        if self._session.resource_name.startswith('ASRL') or self._session.resource_name.endswith('SOCKET'):
-            self._session.read_termination = '\n'
 
         return 0
 
     def close_session(self):
         # Close the connection to the instrument
-        self._session.close()
-        self._resourceManager.close()
+        self._zvl.close()
 
     def get_idn(self):
-        return self._session.query('*IDN?')
+        return self._zvl.query('*IDN?')
 
     def source_power_cal(self):
         # Query the address of the power meter, so we can control it over GPIB
@@ -233,7 +229,8 @@ class PNA:
         self.input_pow = input_power
         self._primaryNum = None
         # Delete all traces, measurements, and windows that might be open
-        self._session.write(':SYSTem:PRESet')
+        # Send Reset command and wait for it to finish
+        self._zvl.write_str_with_opc('*RST')  # The default MODE is spectrum analyzer
 
         # Set up the frequency range
         self._session.write('SENSe:FREQuency:STARt 300000000')  # 300 MHz
