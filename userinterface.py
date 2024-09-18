@@ -1,4 +1,5 @@
 import dearpygui.dearpygui as dpg
+import numpy
 import usb.core
 import usb.util
 from pyftdi.i2c import I2cController, I2cIOError
@@ -13,12 +14,6 @@ import VSerialPort
 def add_text_to_console(msg) -> None:
     dpg.add_text(msg, parent="console_window")
     dpg.set_y_scroll("console_window", dpg.get_y_scroll_max("console_window"))
-
-
-def is_pna_connected():
-    # If connected is true, the disconnect button is enabled
-    state = dpg.get_item_configuration("disconnect_button")
-    return state.get("enabled")
 
 
 def clear_graph():
@@ -55,6 +50,17 @@ class UserInterface:
         self._temp_id = 0
         self._frx_attn_id = 0
         self.opt_attn = "None"
+        self.freqs = []
+        self.gain = []
+        self.pl = []
+        self.ph = []
+        self.im2 = []
+        self.im3l = []
+        self.im3h = []
+        self.oip2 = []
+        self.oip3 = []
+        self.iip2 = []
+        self.iip3 = []
 
     def run(self):
         dpg.create_context()
@@ -90,36 +96,75 @@ class UserInterface:
 
     def connect_valon(self):
         # Connect to the valon
-        self.sp = VSerialPort.VSerialPort()
+        self.sp = VSerialPort.VSerialPort()  # TODO: why does this crash sometimes
         if self.sp.isOpen():
             self.sp.writeline("status")
             self.sp.readAll()
 
-            # Set ext reference at 10MHz
-            self.sp.writeline('REFS 1')
-            self.sp.readAll()
-            self.sp.writeline('ref; 10m')
-            self.sp.readAll()
-            self.sp.lineGet()  # Throw away the echo of the command
+            self.sp.writeline('S1; FSTEP 1M')
+            self.sp.writeline('S2; FSTEP 1M')
+            self.sp.writeline('S1; INTFRAC FRAC')
+            self.sp.writeline('S2; INTFRAC FRAC')
 
+            # Set ext reference at 10MHz
+            self.sp.writeline('REFS 0')
+            self.sp.readAll()
+            self.sp.writeline('ref 20 MHz;')
+            self.sp.readAll()
+
+            self.sp.writeline('S1; START 2100 M')
+            self.sp.writeline('S2; START 3500 M')
+            self.sp.writeline('S1; STOP 2800 M')
+            self.sp.writeline('S2; STOP 3600 M')
+            self.sp.writeline('STEP 2 M')
+            self.sp.writeline('S1; RATE 1.0')
+            self.sp.writeline('S2; RATE 1.0')
+            self.sp.writeline('S1; CP 7')
+            self.sp.writeline('S2; CP 7')
+            self.sp.writeline('REFT10 0')
+
+            dpg.configure_item("valon_button", enabled=False, show=False)
+            dpg.configure_item("valon_disconnect_button", enabled=True, show=True)
         else:
             add_text_to_console("Could not connect to the Valon, check USB connection and try again.")
 
+    def disconnect_valon(self):
+        self.sp.close()
+        dpg.configure_item("valon_button", enabled=True, show=True)
+        dpg.configure_item("valon_disconnect_button", enabled=False, show=False)
+        self.sp = None
+
     def program_valon(self):
         #  Convert the desired RF power to an attenuation value
+        # Valon has 10dB attn pads on each source
+        # With those pads, the equation relating attn to output pow is:
+        # power = -4.94*attn + 2.41
+
         power = dpg.get_value("pow_input")
-        #  Assume output pow is +15dBm when ATT=0
-        if power < -15:
+        if power < -28.75:
             # Setting RFPow to OFF drops power by 30dB
             self.sp.writeline('Source 1; OEN 0')
             self.sp.writeline('Source 2; OEN 0')
-            attn = -15 - power
+            attn = np.round((power + 27.63)/-0.98, 2)
         else:
-            attn = 15 - power
+            self.sp.writeline('Source 1; OEN 1')
+            self.sp.writeline('Source 2; OEN 1')
+            attn = np.round((power - 2.43)/-0.99, 2)
 
-        self.sp.writeline('Source1; ATT' + attn)
+        self.sp.writeline('Source1; MODe CW')
+        self.sp.writeline('Source1; ATT' + str(attn))
+        self.sp.readAll()
+        self.sp.lineGet()
+
+        self.sp.writeline('Source2; MODe CW')
+        self.sp.writeline('Source2; ATT' + str(attn))
         self.sp.readAll()
         self.sp.lineGet()  # TODO:  read the echo of the command to check?
+
+        # After we set the attn on the valon, get the spectrum analyzer ready to measure
+        dpg.add_text('Preparing the spectrum analyzer routine...', parent=self._console_window_id)
+        self.pna.calibration(power)
+        dpg.add_text('Finished spectrum analyzer prep.', parent=self._console_window_id)
 
     def connect_pna(self):
         #  Connect to the PNA
@@ -132,9 +177,8 @@ class UserInterface:
             #  If no errors, show the disconnect button
             dpg.configure_item("connect_button", show=False, enabled=False)
             dpg.configure_item("disconnect_button", show=True, enabled=True)
-            #  Enable calibration
-            dpg.configure_item("start_cal_button", enabled=True)
             #  Enable starting a measurement
+            #TODO: only enabled if connected to valon too
             dpg.configure_item("start_measure_button", enabled=True)
         else:
             dpg.add_text('Couldn\'t connect to \'%s\', exiting now...' % self.pna.VISA_ADDRESS,
@@ -143,31 +187,74 @@ class UserInterface:
     def disconnect_pna(self):
         #  Disconnect from the PNA
         self.pna.close_session()
+        self.pna = None
         dpg.add_text('Disconnected from the PNA.', parent=self._console_window_id)
         #  If no errors, show the connect button
         dpg.configure_item("connect_button", show=True, enabled=True)
         dpg.configure_item("disconnect_button", show=False, enabled=False)
-        #  Disable calibration
-        dpg.configure_item("start_cal_button", enabled=False)
         #  Disable starting a measurement
         dpg.configure_item("start_measure_button", enabled=False)
 
-    def start_calibration(self):
-        dpg.add_text('Starting the calibration routine...', parent=self._console_window_id)
-        self.pna.calibration(str(dpg.get_value("cal_input")))
-        dpg.add_text('Finished receiver power calibration.', parent=self._console_window_id)
-
     def start_measurement(self):
-        # TODO: what if we start a measurement from a pre-calibrated machine
+        # TODO: make sure we can't start this if we're not connected to the valon
         dpg.add_text("Starting two-tone measurement...", parent=self._console_window_id)
-        self.pna.two_tone_test(dpg.get_value("cal_input"))
-        if self.pna.x_axis is not None:
-            dpg.configure_item("gain plot", show=True)
-            dpg.add_line_series(self.pna.x_axis, self.pna.gain, parent="y_axis")
-            dpg.configure_item("IIP2 plot", show=True)
-            dpg.add_line_series(self.pna.x_axis, self.pna.IIp2, parent="iip2 y_axis")
-            dpg.configure_item("IIP3 plot", show=True)
-            dpg.add_line_series(self.pna.x_axis, self.pna.IIp3, parent="iip3 y_axis")
+        dpg.configure_item("gain plot", show=True)
+        dpg.configure_item("IIP2 plot", show=True)
+        dpg.configure_item("IIP3 plot", show=True)
+
+        #TODO: save multiple runs, choose which to write to file
+        self.freqs = []
+        self.gain = []
+        self.pl = []
+        self.ph = []
+        self.im2 = []
+        self.im3l = []
+        self.im3h = []
+        self.oip2 = []
+        self.oip3 = []
+        self.iip2 = []
+        self.iip3 = []
+
+        freq_list = [350, 450, 550, 650, 750, 850, 950, 1050, 1150, 1250, 1350, 1450, 1550, 1650, 1750, 1850, 1950]  # MHz
+
+        gain_tag = dpg.generate_uuid()
+        iip2_tag = dpg.generate_uuid()
+        iip3_tag = dpg.generate_uuid()
+        dpg.add_line_series(self.freqs, self.gain, parent="y_axis", tag=gain_tag)
+        dpg.add_line_series(self.freqs, self.iip2, parent="iip2 y_axis", tag=iip2_tag)
+        dpg.add_line_series(self.freqs, self.iip3, parent="iip3 y_axis", tag=iip3_tag)
+
+        for f in freq_list:
+            # First tell the valon what frequency to output
+            self.sp.writeline('Source1; Frequency ' + str(f-0.5) + 'MHz')
+            self.sp.readAll()
+            self.sp.lineGet()
+
+            self.sp.writeline('Source2; Frequency ' + str(f+0.5) + 'MHz')
+            self.sp.readAll()
+            self.sp.lineGet()  # TODO:  read the echo of the command to check?
+
+            # Then tell the R&S what frequency to read
+            # [gain, PL, PH, IM2, IM3L, IM3H, OIP2, OIP3, IIP2, IIP3]
+            result = self.pna.two_tone_test(f-0.5)
+
+            self.freqs.append(f/1000)  # GHz
+            self.gain.append(result[0])
+            self.pl.append(result[1])
+            self.ph.append(result[2])
+            self.im2.append(result[3])
+            self.im3l.append(result[4])
+            self.im3h.append(result[5])
+            self.oip2.append(result[6])
+            self.oip3.append(result[7])
+            self.iip2.append(result[8])
+            self.iip3.append(result[9])
+
+        dpg.set_value(gain_tag, [self.freqs, self.gain])
+        dpg.set_value(iip2_tag, [self.freqs, self.iip2])
+        dpg.set_value(iip3_tag, [self.freqs, self.iip3])
+
+        dpg.add_text("Finished two-tone measurement.", parent=self._console_window_id)
 
     def _connect_frx(self, sender=None, data=None) -> None:
         """Callback for clicking the frx connect button.
@@ -454,17 +541,15 @@ class UserInterface:
                 f.write('\n')
             else:
                 f.write('No FRX connected\n')
-            f.write('PNA calibration power\n')
-            f.write(str(dpg.get_value("cal_input")) + '\n')
-            # TODO: update for multiple runs of data
-            if self.pna is not None:
+            f.write('Valon output power\n')
+            f.write(str(dpg.get_value("pow_input")) + '\n')
+
+            if self.freqs is not None:
                 f.write(
-                    'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),IM3H Log Mag(dBm),'
-                    'OIP2,OIP3,Gain,IIP2,IIP3\n')
-                np.savetxt(f, np.array(list(zip(self.pna.x_axis, self.pna.primary_low, self.pna.primary_high,
-                                                self.pna.second_intermod, self.pna.third_intermod_low,
-                                                self.pna.third_intermod_high, self.pna.OIP2, self.pna.OIP3, self.pna.gain,
-                                                self.pna.IIp2, self.pna.IIp3))), delimiter=',', fmt='%f')
+                    'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),'
+                    'IM3H Log Mag(dBm),OIP2,OIP3,Gain,IIP2,IIP3\n')
+                np.savetxt(f, np.array(list(zip(self.freqs, self.pl, self.ph, self.im2, self.im3l, self.im3h, self.oip2,
+                                                self.oip3, self.gain, self.iip2, self.iip3))), delimiter=',', fmt='%f')
 
     def _make_gui(self):
         with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_callback,
@@ -501,8 +586,10 @@ class UserInterface:
                                             callback=self.program_valon, min_value=-50,
                                             min_clamped=True, max_value=10, max_clamped=True)
                         dpg.add_spacer(height=10)
-                        dpg.add_button(label="Connect", tag="valon_button", enabled=False,
+                        dpg.add_button(label="Connect", tag="valon_button", enabled=True, show=True,
                                        callback=self.connect_valon, indent=55, width=60)
+                        dpg.add_button(label="Disconnect", tag="valon_disconnect_button", enabled=False, show=False,
+                                       callback=self.disconnect_valon, indent=55, width=60)
                     with dpg.child_window(label="measurement_window", height=75, width=200):
                         dpg.add_button(label="Measure", tag="start_measure_button", enabled=False,
                                        callback=self.start_measurement, indent=55, width=60)
@@ -635,9 +722,13 @@ class UserInterface:
                 dpg.add_text("Connect to the RF over Fiber boards to begin.")
 
     def _exit_callback(self):
-        if is_pna_connected():
+        if self.pna is not None:
             self.pna.close_session()
             dpg.add_text('Disconnecting from the PNA...', parent=self._console_window_id)
+
+        if self.sp is not None:
+            dpg.add_text('Disconnecting from the valon', parent=self._console_window_id)
+            self.sp.close()
 
         if self.frx is not None:
             dpg.add_text("Disconnecting from FRX board...",

@@ -9,7 +9,7 @@ class VSerialPort(serial.Serial):
     portLines = []
     portLineCount = 0
     portLineIndex = 0
-    verbose = False
+    verbose = True
 
     def __init__(self, portParam=None):
         # Call the base constructor
