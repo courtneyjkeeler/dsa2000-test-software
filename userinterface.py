@@ -1,5 +1,4 @@
 import dearpygui.dearpygui as dpg
-import numpy
 import usb.core
 import usb.util
 from pyftdi.i2c import I2cController, I2cIOError
@@ -61,6 +60,7 @@ class UserInterface:
         self.oip3 = []
         self.iip2 = []
         self.iip3 = []
+        self.nyquist = []
 
     def run(self):
         dpg.create_context()
@@ -96,7 +96,13 @@ class UserInterface:
 
     def connect_valon(self):
         # Connect to the valon
-        self.sp = VSerialPort.VSerialPort()  # TODO: why does this crash sometimes
+        dpg.add_text("Attempting to connect to the Valon...", parent=self._console_window_id)
+        try:
+            self.sp = VSerialPort.VSerialPort()
+        except UnicodeDecodeError as err:
+            # print(err)
+            dpg.add_text("Could not connect to the Valon: "+str(err), parent=self._console_window_id)
+            return
         if self.sp.isOpen():
             self.sp.writeline("status")
             self.sp.readAll()
@@ -123,16 +129,25 @@ class UserInterface:
             self.sp.writeline('S2; CP 7')
             self.sp.writeline('REFT10 0')
 
+            dpg.add_text("Valon connection successful.", parent=self._console_window_id)
+
             dpg.configure_item("valon_button", enabled=False, show=False)
             dpg.configure_item("valon_disconnect_button", enabled=True, show=True)
+            if self.pna is not None:
+                #  Enable starting a measurement if we're already connected to the spectrum analyzer
+                dpg.configure_item("start_measure_button", enabled=True)
         else:
-            add_text_to_console("Could not connect to the Valon, check USB connection and try again.")
+            dpg.add_text("Error connecting to the Valon, check USB connection and try again.",
+                         parent=self._console_window_id)
 
     def disconnect_valon(self):
         self.sp.close()
         dpg.configure_item("valon_button", enabled=True, show=True)
         dpg.configure_item("valon_disconnect_button", enabled=False, show=False)
         self.sp = None
+        #  Disable starting a measurement
+        dpg.configure_item("start_measure_button", enabled=False)
+        dpg.add_text("Valon disconnected, ok the remove USB.", parent=self._console_window_id)
 
     def program_valon(self):
         #  Convert the desired RF power to an attenuation value
@@ -178,8 +193,8 @@ class UserInterface:
             dpg.configure_item("connect_button", show=False, enabled=False)
             dpg.configure_item("disconnect_button", show=True, enabled=True)
             #  Enable starting a measurement
-            #TODO: only enabled if connected to valon too
-            dpg.configure_item("start_measure_button", enabled=True)
+            if self.sp is not None:
+                dpg.configure_item("start_measure_button", enabled=True)
         else:
             dpg.add_text('Couldn\'t connect to \'%s\', exiting now...' % self.pna.VISA_ADDRESS,
                          parent=self._console_window_id)
@@ -196,13 +211,12 @@ class UserInterface:
         dpg.configure_item("start_measure_button", enabled=False)
 
     def start_measurement(self):
-        # TODO: make sure we can't start this if we're not connected to the valon
         dpg.add_text("Starting two-tone measurement...", parent=self._console_window_id)
         dpg.configure_item("gain plot", show=True)
         dpg.configure_item("IIP2 plot", show=True)
         dpg.configure_item("IIP3 plot", show=True)
 
-        #TODO: save multiple runs, choose which to write to file
+        # TODO: save multiple runs, choose which to write to file
         self.freqs = []
         self.gain = []
         self.pl = []
@@ -214,8 +228,9 @@ class UserInterface:
         self.oip3 = []
         self.iip2 = []
         self.iip3 = []
+        self.nyquist = []
 
-        freq_list = [350, 450, 550, 650, 750, 850, 950, 1050, 1150, 1250, 1350, 1450, 1550, 1650, 1750, 1850, 1950]  # MHz
+        freq_list = np.linspace(350, 2000, num=51, dtype=float)
 
         gain_tag = dpg.generate_uuid()
         iip2_tag = dpg.generate_uuid()
@@ -249,6 +264,7 @@ class UserInterface:
             self.oip3.append(result[7])
             self.iip2.append(result[8])
             self.iip3.append(result[9])
+            self.nyquist.append(result[10])
 
         dpg.set_value(gain_tag, [self.freqs, self.gain])
         dpg.set_value(iip2_tag, [self.freqs, self.iip2])
@@ -508,6 +524,7 @@ class UserInterface:
             f.write('Optical Attenuation,' + self.opt_attn + '\n')
             f.write('Comments,' + dpg.get_value('notes_input') + '\n')
             f.write('\n')
+            # TODO: save valon state?
             if self.ftx is not None:
                 f.write('FTX, Value, Units, Mon/Cmd\n')
                 if dpg.get_value("lna_bias_checkbox"):
@@ -547,9 +564,9 @@ class UserInterface:
             if self.freqs is not None:
                 f.write(
                     'Frequency (GHz),PL Log Mag(dBm),PH Log Mag(dBm),IM2 Log Mag(dBm),IM3L Log Mag(dBm),'
-                    'IM3H Log Mag(dBm),OIP2,OIP3,Gain,IIP2,IIP3\n')
+                    'IM3H Log Mag(dBm),OIP2,OIP3,Gain,IIP2,IIP3,2f1\n')
                 np.savetxt(f, np.array(list(zip(self.freqs, self.pl, self.ph, self.im2, self.im3l, self.im3h, self.oip2,
-                                                self.oip3, self.gain, self.iip2, self.iip3))), delimiter=',', fmt='%f')
+                                                self.oip3, self.gain, self.iip2, self.iip3, self.nyquist))), delimiter=',', fmt='%f')
 
     def _make_gui(self):
         with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_callback,

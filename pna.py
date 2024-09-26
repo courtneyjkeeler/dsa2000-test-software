@@ -227,6 +227,11 @@ class PNA:
         self._zvl.write('CALC:MARK:X ' + str(primary_low + 2) + 'MHz')
         IM3H = float(self._zvl.query('CALC:MARK:Y?'))
 
+        self._zvl.write('FREQuency:CENTer ' + str(primary_low * 2) + 'MHz')
+        self._zvl.write('INITiate:IMMediate; *WAI')
+        self._zvl.write('CALC:MARK:X ' + str(primary_low * 2) + 'MHz')
+        nyquist = float(self._zvl.query('CALC:MARK:Y?'))
+
         self._zvl.write('SENSe1:SWEep:POINts 101')
 
         # Do math on the signals
@@ -239,5 +244,5 @@ class PNA:
         IIP3 = OIP3 - gain
 
         # Return the results
-        return [gain, PL, PH, IM2, IM3L, IM3H, OIP2, OIP3, IIP2, IIP3]
+        return [gain, PL, PH, IM2, IM3L, IM3H, OIP2, OIP3, IIP2, IIP3, nyquist]
 
